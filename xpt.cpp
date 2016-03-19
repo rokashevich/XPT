@@ -1,7 +1,5 @@
 #include <iostream>
-
 using namespace std;
-
 void usage()
 {
 	//       ------------------------------------width:80------------------------------------
@@ -30,9 +28,31 @@ void usage()
 	cout << "  xpt repo \\\\server\\repo"                                                      << endl;
 	cout << "  xpt pwd C:\\packages repo \\\\server\\repo"                                     << endl;
 }
+#include <string>
+#include <sys/types.h>
+#include <sys/stat.h>
+// Global wars used everywhere thru the code
+string pwd = "";
+
+// Helper functions
+bool isdir(char *s)
+{
+	struct stat info;
+	if (stat(s, &info) != 0) return false;
+	else if( info.st_mode & S_IFDIR ) return true;
+	return false;
+}
 
 int main(int argc, char* argv[])
 {
 	if (argc < 2) { usage(); return 1; }
+	if (!strcmp(argv[1],"pwd"))
+	{
+		if (argc < 3) { usage(); return 1; }
+		if (!isdir(argv[2])){cout << "*** Error! Not a directory: " << argv[2] << endl; return 1;}
+		pwd = string(argv[2]);
+	}
+	else
+		pwd = ".";
 	return 0;
 }
