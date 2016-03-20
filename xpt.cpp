@@ -22,7 +22,7 @@ void usage()
 	cout << "  Version: 1.2.3-4"                                                               << endl;
 	cout << "  Depends: dependent-package1, dependent-package2"                                << endl;
 	cout << "The package will be stored in pwd."                                               << endl;
-	cout << "  xpt create PACKAGE_TREE"                                                        << endl << endl;
+	cout << "  xpt create DIRECTORY"                                                           << endl << endl;
 
 	cout << "The next command pushes packages found in pwd to the repository:"                 << endl;
 	cout << "  xpt repo \\\\server\\repo"                                                      << endl;
@@ -31,28 +31,62 @@ void usage()
 #include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
-// Global wars used everywhere thru the code
-string pwd = "";
+#include <fstream>
+#include <vector>
+#include <iterator>
+// Global vars used everywhere thru the code -----------------------------------
+string pwd = ".";
 
-// Helper functions
-bool isdir(char *s)
+// Universal helper functions --------------------------------------------------
+bool isdir(const string& s)
 {
 	struct stat info;
-	if (stat(s, &info) != 0) return false;
+	if (stat(s.c_str(), &info) != 0) return false;
 	else if( info.st_mode & S_IFDIR ) return true;
+	return false;
+}
+
+bool isfile(const string& s)
+{
+	struct stat info;
+	if (stat(s.c_str(), &info) != 0) return false;
+	else if( info.st_mode & S_IFREG ) return true;
+	return false;
+}
+
+// Main ------------------------------------------------------------------------
+bool create(const string& dir)
+{
+	if(!isdir(dir)){cout << "*** Error! Not a directory: " << dir << endl;return 1;}
+	if(!isdir(pwd+"/"+dir+"/CONTENT")){cout << "*** Error! No CONTENT subdirectory" << endl;return 1;}
+	if(!isdir(pwd+"/"+dir+"/PACKAGE")){cout << "*** Error! No PACKAGE subdirectory" << endl;return 1;}
+
+	ifstream fcontrol(pwd+"/"+dir+"/PACKAGE/control");
+	if (!fcontrol.good()){cout << "*** Error! Can not open: " << pwd+"/"+dir+"/PACKAGE" << endl;}
+	vector<string> ss;string s;while (getline(fcontrol, s)){ss.push_back(s);}
+
+	ofstream fsize((pwd+"/"+dir+"/PACKAGE/size"));
+	ofstream fmd5sums((pwd+"/"+dir+"/PACKAGE/md5sums"));
+	ofstream fmd5sum((pwd+"/"+dir+"/PACKAGE/md5sum"));
+	fsize.close();
+	fmd5sums.close();
+	fmd5sum.close();
 	return false;
 }
 
 int main(int argc, char* argv[])
 {
-	if (argc < 2) { usage(); return 1; }
-	if (!strcmp(argv[1],"pwd"))
+	int shift = 0;
+	if (argc > 2 && !strcmp(argv[1],"pwd"))
 	{
-		if (argc < 3) { usage(); return 1; }
-		if (!isdir(argv[2])){cout << "*** Error! Not a directory: " << argv[2] << endl; return 1;}
+		if (!isdir(string(argv[2]))){cout << "*** Error! Not a directory: " << argv[2] << endl; return 1;}
 		pwd = string(argv[2]);
+		shift = 2; // parse argv "plus two" as if pwd was not passed
 	}
-	else
-		pwd = ".";
-	return 0;
+
+	if (argc == shift+3 && !strcmp(argv[shift+1],"create")) return create(string(argv[shift+2]));
+
+	cout << "*** Error! Unknown command line options! Read the manual below:" << endl << endl;
+	usage();
+	return 1;
 }
