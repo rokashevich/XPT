@@ -17,7 +17,7 @@ void usage()
 	cout << "To make a package you must create a directory with subdirectories: CONTENT and"   << endl;
 	cout << "PACKAGE. The first one should contain folders and files to pack (relatively to"   << endl;
 	cout << "the sandbox root - all like in Debian). The PACKAGE folder must contain the file" << endl;
-	cout << "\"control\" with the following content:"                                          << endl;
+    cout << "\"control\" with the following content (space after colon required!):"            << endl;
 	cout << "  Package: example-package"                                                       << endl;
 	cout << "  Version: 1.2.3-4"                                                               << endl;
 	cout << "  Depends: dependent-package1, dependent-package2"                                << endl;
@@ -63,7 +63,20 @@ bool create(const string& dir)
 
 	ifstream fcontrol(pwd+"/"+dir+"/PACKAGE/control");
 	if (!fcontrol.good()){cout << "*** Error! Can not open: " << pwd+"/"+dir+"/PACKAGE" << endl;}
-	vector<string> ss;string s;while (getline(fcontrol, s)){ss.push_back(s);}
+
+    string package;
+    string version;
+    string depends;
+    string s;
+    while (getline(fcontrol, s))
+    {
+        if (!strncmp(s.c_str(), "Package: ", strlen("Package: "))) package = s.substr(size("Package:"));
+        if (!strncmp(s.c_str(), "Version: ", strlen("Version: "))) version = s.substr(size("Version:"));
+        if (!strncmp(s.c_str(), "Depends: ", strlen("Depends: "))) depends = s.substr(size("Depends:"));
+    }
+    if (!package.size()) {cout << "*** Error! No \"Package: \" line in the control file" << endl;return 1;}
+    if (!version.size()) {cout << "*** Error! No \"Version: \" line in the control file" << endl;return 1;}
+    if (!depends.size()) {cout << "*** Error! No \"Depends: \" line in the control file" << endl;return 1;}
 
 	ofstream fsize((pwd+"/"+dir+"/PACKAGE/size"));
 	ofstream fmd5sums((pwd+"/"+dir+"/PACKAGE/md5sums"));
@@ -71,7 +84,14 @@ bool create(const string& dir)
 	fsize.close();
 	fmd5sums.close();
 	fmd5sum.close();
-	return false;
+
+    string cmd;
+#if defined(_WIN32) || defined(WIN32)
+    cmd = "powershell -NoLogo -NonInteractive -NoProfile -Command \"& Add-Type -A 'System.IO.Compression.FileSystem'; [IO.Compression.ZipFile]::CreateFromDirectory('"+pwd+"/"+dir+"', '"+pwd+"/"+package+"-"+version+".zip');exit !$?\"";
+#else
+#endif
+    if (system(cmd.c_str()) != 0){cout << "*** Error! Executing failed: " << cmd; return false;}
+    return true;
 }
 
 int main(int argc, char* argv[])
