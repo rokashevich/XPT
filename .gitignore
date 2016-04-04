@@ -1,0 +1,6 @@
+include/
+lib/
+*.zip
+*.ilk
+*.pdb
+*.user*
