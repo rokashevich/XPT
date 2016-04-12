@@ -1,6 +1,5 @@
 #include <iostream>
-void usage()
-{
+void usage(){
 	//            ------------------------------------width:80------------------------------------
 	std::cout << "XPT - Cross(X)platform Packaging Tool - Version: 0.0.0"                           << std::endl << std::endl;
 
@@ -51,30 +50,26 @@ std::unordered_set<std::string> newfiles; // store here every newly created file
 
 
 // UNIVERSAL HELPER FUNCTIONS --------------------------------------------------
-bool isdir(const std::string& s)
-{
+bool isdir(const std::string& s){
 	struct stat info;
 	if (stat(s.c_str(), &info) != 0) return false;
 	else if( info.st_mode & S_IFDIR ) return true;
 	return false;
 }
 
-bool isfile(const std::string& s)
-{
+bool isfile(const std::string& s){
 	struct stat info;
 	if (stat(s.c_str(), &info) != 0) return false;
 	else if( info.st_mode & S_IFREG ) return true;
 	return false;
 }
 
-bool e(const std::string &cmd)
-{
+bool e(const std::string &cmd){
 	std::cout << ">" << cmd << std::endl;
 	return std::system(cmd.c_str()) == 0;
 }
 
-bool copy(const std::string& src, const std::string& dst)
-{
+bool copy(const std::string& src, const std::string& dst){
 /*
 Supported upload protocols:
 Windows:
@@ -187,8 +182,7 @@ bool install(const std::vector<std::string>& arg){
 	// Everything's done well, remove all *.old files --------------------------
 	return removeold();
 }
-bool repo(const std::string& repo)
-{
+bool repo(const std::string& repo){
 /*
 Example of the packages-file in a repo:
 -------------------------------------------------------------------------------
@@ -202,8 +196,7 @@ package2_5.6.7-8.zip
 
 	std::ofstream f("packages");
 	boost::filesystem::directory_iterator end_iter;
-	for (boost::filesystem::directory_iterator dir_itr(boost::filesystem::path(pwd.c_str()));dir_itr != end_iter;++dir_itr)
-	{
+	for (boost::filesystem::directory_iterator dir_itr(boost::filesystem::path(pwd.c_str()));dir_itr != end_iter;++dir_itr){
 		std::string filename = boost::filesystem::relative(dir_itr->path()).string();
 		if (filename.size()<5) continue;                             // string(".zip").size() == 4
 		if(filename.compare(filename.size()-4,4,".zip")!=0)continue; //
@@ -216,8 +209,7 @@ package2_5.6.7-8.zip
 	return false;
 }
 
-bool create(const std::string& dir)
-{
+bool create(const std::string& dir){
 	if(!isdir(dir)){std::cout << "*** Error! Not a directory: " << dir << std::endl;return 1;}
 	if(!isdir(dir+"/CONTENT")){std::cout << "*** Error! No CONTENT subdirectory" << std::endl;return 1;}
 	if(!isdir(dir+"/PACKAGE")){std::cout << "*** Error! No PACKAGE subdirectory" << std::endl;return 1;}
@@ -229,8 +221,7 @@ bool create(const std::string& dir)
 	std::string version;
 	std::string depends;
 	std::string s;
-	while (std::getline(fcontrol, s))
-	{
+	while (std::getline(fcontrol, s)){
 		if (!std::strncmp(s.c_str(), "Package: ", strlen("Package: "))) package = s.substr(std::string("Package: ").size());
 		if (!std::strncmp(s.c_str(), "Version: ", strlen("Version: "))) version = s.substr(std::string("Version: ").size());
 		if (!std::strncmp(s.c_str(), "Depends: ", strlen("Depends: "))) depends = s.substr(std::string("Depends: ").size());
@@ -257,19 +248,15 @@ bool create(const std::string& dir)
 	return true;
 }
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]){
 	exd = boost::filesystem::system_complete(boost::filesystem::path(argv[0])).parent_path().string();
 
 	int shift;
-	if (argc > 2 && !strcmp(argv[1],"pwd"))
-	{
+	if (argc > 2 && !strcmp(argv[1],"pwd")){
 		if (!isdir(std::string(argv[2]))){std::cout << "*** Error! Not a directory: " << argv[2] << std::endl; return 1;}
 		pwd = std::string(argv[2]);
 		shift = 2; // parse argv "plus two" as if pwd was not passed
-	}
-	else
-	{
+	}else{
 		pwd = ".";
 		shift = 0;
 	}
