@@ -113,33 +113,33 @@ bool download(const std::string& src, const std::string& dst){
 	return true;
 }
 // MAIN ------------------------------------------------------------------------
-bool revert(){
+int revert(){
 	for (const auto& elem: newfiles) {
 		if (boost::filesystem::exists(elem))
 			try{boost::filesystem::remove(elem);}
 			catch(std::exception const& e){std::cout<<"*** Error: "<<e.what()<<std::endl;}
 	}
-	return false; // must always return false, revert - is a mulfunction
+	return 1; // must always return false, revert - is a mulfunction
 }
-bool removeold(){
+int removeold(){
 	std::cout<<"Cleaning up ..."<<std::endl;
 	boost::filesystem::directory_iterator end_iter;
 	for (boost::filesystem::directory_iterator dir_itr(varxptpackagespath);dir_itr != end_iter;++dir_itr){
 		if (boost::algorithm::ends_with((*dir_itr).path().string(), ".old")){
 			try{boost::filesystem::remove(*dir_itr);}
-			catch(std::exception const& e){std::cout<<"*** Error: "<<e.what()<<std::endl;return false;}
+			catch(std::exception const& e){std::cout<<"*** Error: "<<e.what()<<std::endl;return 1;}
 		}
 	}
-	return true;
+	return 0;
 }
-bool install(const std::vector<std::string>& arg){
+int install(const std::vector<std::string>& arg){
 	// DOWNLOAD ALL PACKAGES FILES FROM ALL REPOS --------------------------------
 	boost::filesystem::directory_iterator end_iter;
 	//
 	// var/xpt/packages/* -> var/xpt/packages/*.old
 	//
 	for (boost::filesystem::directory_iterator dir_itr(varxptpackagespath);dir_itr != end_iter;++dir_itr){
-		if (boost::algorithm::ends_with((*dir_itr).path().string(), ".old")){std::cout<<"*** Error! File exists from a previous run:"<<(*dir_itr).path().string()<<std::endl;return false;}
+		if (boost::algorithm::ends_with((*dir_itr).path().string(), ".old")){std::cout<<"*** Error! File exists from a previous run:"<<(*dir_itr).path().string()<<std::endl;return 1;}
 		try{boost::filesystem::rename(*dir_itr, boost::filesystem::path((*dir_itr).path().string()+".old"));}
 		catch(std::exception const& e){std::cout<<"*** Error renaming "<<(*dir_itr).path().string()<<" into "<<(*dir_itr).path().string()+".old"<<" What: "<<e.what()<<std::endl;return revert();}
 	}
@@ -182,7 +182,7 @@ bool install(const std::vector<std::string>& arg){
 	// Everything's done well, remove all *.old files --------------------------
 	return removeold();
 }
-bool repo(const std::string& repo){
+int repo(const std::string& repo){
 /*
 Example of the packages-file in a repo:
 -------------------------------------------------------------------------------
@@ -191,8 +191,8 @@ package2_5.6.7-8.zip
 -------------------------------------------------------------------------------
 */
 	boost::filesystem::path r(repo);
-	if(boost::filesystem::exists(r)){std::cout<<"*** Error! Already exists: "<<r.filename().string()<<std::endl;return false;}
-	if(!boost::filesystem::create_directories(r)){std::cout<<"*** Error creating: "<<r.filename().string()<<std::endl;return false;}
+	if(boost::filesystem::exists(r)){std::cout<<"*** Error! Already exists: "<<r.filename().string()<<std::endl;return 1;}
+	if(!boost::filesystem::create_directories(r)){std::cout<<"*** Error creating: "<<r.filename().string()<<std::endl;return 1;}
 
 	std::ofstream f("packages");
 	boost::filesystem::directory_iterator end_iter;
@@ -200,13 +200,13 @@ package2_5.6.7-8.zip
 		std::string filename = boost::filesystem::relative(dir_itr->path()).string();
 		if (filename.size()<5) continue;                             // string(".zip").size() == 4
 		if(filename.compare(filename.size()-4,4,".zip")!=0)continue; //
-		if(!copy(filename,repo)){std::cout<<"*** Error copying package to the repo!"<<std::endl;return false;}
+		if(!copy(filename,repo)){std::cout<<"*** Error copying package to the repo!"<<std::endl;return 1;}
 		f << dir_itr->path().filename().string() << "\n";
 	}
 	f.close();
-	if(!copy("packages",repo)){std::cout<<"*** Error copying packages-file!"<<std::endl;return false;}
+	if(!copy("packages",repo)){std::cout<<"*** Error copying packages-file!"<<std::endl;return 1;}
 	boost::filesystem::remove(boost::filesystem::path("packages"));
-	return false;
+	return 0;
 }
 
 bool create(const std::string& dir){
