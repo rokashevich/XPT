@@ -1,2 +1,2 @@
 # xpt
-XPT - Cross(X)platform Packaging Tool
+XPT - eXtremly small Package Tool
