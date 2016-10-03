@@ -1,32 +1,21 @@
 #include <iostream>
+#include <boost/version.hpp>
+#include <curl/curlver.h>
 void usage(){
-	//            ------------------------------------width:80------------------------------------
-	std::cout << "XPT - Cross(X)platform Packaging Tool - Version: 0.0.0"                           << std::endl << std::endl;
-
-	std::cout << "It's a simple tool that allows you to create packages, push them to server then"  << std::endl;
-	std::cout << "install packages automatically pulling out dependencies. It's something similar"  << std::endl;
-	std::cout << "to Debians apt."                                                                  << std::endl << std::endl;
-
-	std::cout << "If you want to set the working directory the first argument must always be pwd"   << std::endl;
-	std::cout << "if ommited the shells working directory is used."                                 << std::endl;
-	std::cout << "  xpt pwd C:\\sandbox"                                                            << std::endl;
-	std::cout << "  xpt pwd ."                                                                      << std::endl << std::endl;
-
-	std::cout << "To make a package you must create a directory with subdirectories: CONTENT and"   << std::endl;
-	std::cout << "PACKAGE. The first one should contain folders and files to pack (relatively to"   << std::endl;
-	std::cout << "the sandbox root - all like in Debian). The PACKAGE folder must contain the file" << std::endl;
-	std::cout << "\"control\" with the following content (space after colon required!):"            << std::endl;
-	std::cout << "  Package: example-package"                                                       << std::endl;
-	std::cout << "  Version: 1.2.3-4"                                                               << std::endl;
-	std::cout << "  Depends: dependent-package1, dependent-package2"                                << std::endl;
-	std::cout << "The package will be stored in pwd."                                               << std::endl;
-	std::cout << "  xpt create DIRECTORY"                                                           << std::endl << std::endl;
-
-	std::cout << "The next command pushes packages found in pwd to the repository:"                 << std::endl;
-	std::cout << "  xpt repo \\\\server\\repo"                                                      << std::endl;
-	std::cout << "  xpt pwd C:\\packages repo \\\\server\\repo"                                     << std::endl;
+	std::cout<<"XPT "<<VERSION<<" "
+					 <<"("
+					 <<"Boost "<<BOOST_VERSION/100000<<"."
+										 <<BOOST_VERSION/100%1000<<"."
+										 <<BOOST_VERSION%100<<", "
+					 <<"Curl " <<LIBCURL_VERSION
+					 <<")"<<std::endl;
+	std::cout<<"Usage:"<<std::endl;
+	std::cout<<"  xpt [wd <directory to create zip in>] create <unzipped package>"<<std::endl;
+	std::cout<<"  xpt [wd <sandbox>] install <package 1> <package N> [@ <tag>]"<<std::endl;
+	std::cout<<"  xpt [wd <sandbox>] uninstall"<<std::endl;
 }
 
+#include <sstream>
 #include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -36,39 +25,18 @@ void usage(){
 #include <iterator>
 #include <unordered_set>
 #include <unordered_map>
+#include <regex>
 
 #include <boost/filesystem.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/regex.hpp>
 
 // GLOBAL VARS USED EVERYWHERE THRU THE CODE -----------------------------------
-std::string pwd;
-std::string exd; // executable directory
-boost::filesystem::path varxptpath;
-boost::filesystem::path varxptpackagespath;
 std::unordered_set<std::string> newfiles; // store here every newly created filepath
 
-
 // UNIVERSAL HELPER FUNCTIONS --------------------------------------------------
-bool isdir(const std::string& s){
-	struct stat info;
-	if (stat(s.c_str(), &info) != 0) return false;
-	else if( info.st_mode & S_IFDIR ) return true;
-	return false;
-}
-
-bool isfile(const std::string& s){
-	struct stat info;
-	if (stat(s.c_str(), &info) != 0) return false;
-	else if( info.st_mode & S_IFREG ) return true;
-	return false;
-}
-
-bool e(const std::string &cmd){
-	std::cout << ">" << cmd << std::endl;
-	return std::system(cmd.c_str()) == 0;
-}
-
 bool copy(const std::string& src, const std::string& dst){
 /*
 Supported upload protocols:
@@ -80,196 +48,437 @@ Windows:
 #if defined(_WIN32) || defined(WIN32)
 	cmd = "copy \""+src+"\" \""+dst+"\" 1>nul";
 #endif
-	return e(cmd);
+	return false;
 }
 
 // CURL DOWNLOAD FILE PART -----------------------------------------------------
 #define CURL_STATICLIB // required when using static libcurl
 #include <curl/curl.h>
-static size_t write_data(void *ptr, size_t size, size_t nmemb, void *stream){return fwrite(ptr, size, nmemb, (FILE *)stream);}
-bool download(const std::string& src, const std::string& dst){
-	std::cout<<"Downloading: "<<src<<std::endl;
-	std::cout<<"         To: "<<dst<<std::endl;
-	curl_global_init(CURL_GLOBAL_ALL);
-	CURL *curl_handle;
-	curl_handle = curl_easy_init();
-	curl_easy_setopt(curl_handle, CURLOPT_URL, src.c_str());
-	curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, false);
-	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, true);
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_data);
-	curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, true);
-	FILE *pagefile;
-	pagefile = fopen(dst.c_str(), "wb");
-	if(pagefile){
-		curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, pagefile);
-		CURLcode code = curl_easy_perform(curl_handle);
-		fclose(pagefile);
-		if(code){std::cout<<"*** Error curl_easy_perform: "<<code<<std::endl;return false;}
-	}else{
-		std::cout<<"*** Error fopen: "<<dst<<std::endl;
-		return false;
+struct myprogress {
+	double lastruntime;
+	CURL *curl;
+};
+/* this is how the CURLOPT_XFERINFOFUNCTION callback works */
+static int xferinfo(void *p,
+										curl_off_t dltotal, curl_off_t dlnow,
+										curl_off_t ultotal, curl_off_t ulnow)
+{
+	struct myprogress *myp = (struct myprogress *)p;
+	CURL *curl = myp->curl;
+	double curtime = 0;
+
+	curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &curtime);
+
+	/* under certain circumstances it may be desirable for certain functionality
+		 to only run every N seconds, in order to do this the transaction time can
+		 be used */
+	if((curtime - myp->lastruntime) >= 1) {
+		myp->lastruntime = curtime;
+		std::cout<<".";
+		//fprintf(stderr, "TOTAL TIME: %f \r\n", curtime);
 	}
-	curl_easy_cleanup(curl_handle);
-	return true;
-}
-// MAIN ------------------------------------------------------------------------
-int revert(){
-	for (const auto& elem: newfiles) {
-		if (boost::filesystem::exists(elem))
-			try{boost::filesystem::remove(elem);}
-			catch(std::exception const& e){std::cout<<"*** Error: "<<e.what()<<std::endl;}
-	}
-	return 1; // must always return false, revert - is a mulfunction
-}
-int removeold(){
-	std::cout<<"Cleaning up ..."<<std::endl;
-	boost::filesystem::directory_iterator end_iter;
-	for (boost::filesystem::directory_iterator dir_itr(varxptpackagespath);dir_itr != end_iter;++dir_itr){
-		if (boost::algorithm::ends_with((*dir_itr).path().string(), ".old")){
-			try{boost::filesystem::remove(*dir_itr);}
-			catch(std::exception const& e){std::cout<<"*** Error: "<<e.what()<<std::endl;return 1;}
-		}
-	}
+	//fprintf(stderr, "UP: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
+	//				"  DOWN: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
+	//				"\r\n",
+	//				ulnow, ultotal, dlnow, dltotal);
+
 	return 0;
 }
-int install(const std::vector<std::string>& arg){
-	// DOWNLOAD ALL PACKAGES FILES FROM ALL REPOS --------------------------------
-	boost::filesystem::directory_iterator end_iter;
-	//
-	// var/xpt/packages/* -> var/xpt/packages/*.old
-	//
-	for (boost::filesystem::directory_iterator dir_itr(varxptpackagespath);dir_itr != end_iter;++dir_itr){
-		if (boost::algorithm::ends_with((*dir_itr).path().string(), ".old")){std::cout<<"*** Error! File exists from a previous run:"<<(*dir_itr).path().string()<<std::endl;return 1;}
-		try{boost::filesystem::rename(*dir_itr, boost::filesystem::path((*dir_itr).path().string()+".old"));}
-		catch(std::exception const& e){std::cout<<"*** Error renaming "<<(*dir_itr).path().string()<<" into "<<(*dir_itr).path().string()+".old"<<" What: "<<e.what()<<std::endl;return revert();}
+static int older_progress(void *p,
+													double dltotal, double dlnow,
+													double ultotal, double ulnow)
+{
+	return xferinfo(p,
+									(curl_off_t)dltotal,
+									(curl_off_t)dlnow,
+									(curl_off_t)ultotal,
+									(curl_off_t)ulnow);
+}
+static size_t write_data(void *ptr, size_t size, size_t nmemb, void *stream){return fwrite(ptr, size, nmemb, (FILE *)stream);}
+int download(const std::string& src, const std::string& dst){
+	struct myprogress prog;
+	CURL *curl_handle;
+	CURLcode code = CURLE_OK;
+	curl_handle = curl_easy_init();
+	if(curl_handle){
+		prog.lastruntime = 0;
+		prog.curl = curl_handle;
+		curl_easy_setopt(curl_handle, CURLOPT_URL, src.c_str());
+		curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, false);
+		curl_easy_setopt(curl_handle, CURLOPT_PROGRESSFUNCTION, older_progress);
+		curl_easy_setopt(curl_handle, CURLOPT_PROGRESSDATA, &prog);
+		curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_data);
+		curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, true);
+		curl_easy_setopt(curl_handle, CURLOPT_XFERINFOFUNCTION, xferinfo);
+		curl_easy_setopt(curl_handle, CURLOPT_XFERINFODATA, &prog);
+		curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 0L);
+		FILE *pagefile;
+		pagefile = fopen(dst.c_str(), "wb");
+		if(pagefile){
+			curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, pagefile);
+			code = curl_easy_perform(curl_handle);
+			fclose(pagefile);
+			if(code)return code;
+		}
+	curl_easy_cleanup(curl_handle);
 	}
-	//
-	// repo http://*/packages * -> /var/xpt/packages
-	//
-	std::vector<std::string> tags;
-	std::vector<std::string> packages;
-	bool sep = false;
-	for (std::vector<std::string>::const_iterator it = arg.begin() ; it != arg.end(); ++it){
-		if(it->compare("@")==0){sep=true;continue;};
-		if(sep)  tags.push_back(*it);
-		else packages.push_back(*it);
+	return code;
+}
+// MAIN ------------------------------------------------------------------------
+int err1(const std::string& s){std::cout << "*** Error: " << s << std::endl;return 1;}
+void log(const std::string& s){std::cout<<s<<std::endl;}
+void log(const std::unordered_map<std::string, std::vector<std::string> >& map, std::string title="", std::string indent=""){
+	if(!title.empty())std::cout<<indent<<title<<std::endl;
+	int keymaxlength = 0;
+	for(const auto &elem: map){
+		if(keymaxlength<elem.first.size())keymaxlength=int(elem.first.size());
 	}
-	std::unordered_map<std::string, std::array<std::string, 2> > db; // packagename -> {baseurl, version}
-	std::ifstream sourceslist(pwd+"/etc/xpt/sources.list");
-	if (!sourceslist.good()){std::cout << "*** Error openning: " << pwd+"/etc/xpt/sources.list" << std::endl;}
-	std::string s;
-	while (std::getline(sourceslist, s)){
-		if (s.size()>4&&s.compare(0,5,"repo ")==0){
-			std::size_t tagsbeginat = s.find(" ",5);
-			std::string repobase = s.substr(5,tagsbeginat-5); // get a string like "http://repo/project/version"
-			std::string tagsline = s.substr(tagsbeginat)+" "; // get a string like " any win32 win linux " so we can search a tag unambiguously
-			for (std::vector<std::string>::iterator it = tags.begin() ; it != tags.end(); ++it){
-				if (tagsline.find(" "+*it+" ")==std::string::npos) continue;
-				std::string untransformed = repobase+"/"+*it; // http://127.0.0.1:8080/repos/project/any/
-				std::string transformed = untransformed;      // needs transformation into a filename,
-				boost::replace_all(transformed, ".", "");     // so it goes http1270018080reposprojectany
-				boost::replace_all(transformed, ":", "");     //
-				boost::replace_all(transformed, "/", "");     //
-				boost::replace_all(transformed, "\\","");     //
-				boost::filesystem::path saveas = varxptpackagespath/boost::filesystem::path(transformed);
-				if(boost::filesystem::exists(saveas)){std::cout<<"*** Error! Possible duplicate in sources.list when saving "<<untransformed<<std::endl;return revert();}
-				newfiles.insert(saveas.string());
-				if (!download(untransformed+"/packages", saveas.string())) return revert();
-				boost::filesystem::path varxpturl = varxptpackagespath/boost::filesystem::path(transformed+"_url");
+	for(const auto &elem: map){
+		std::string key = elem.first;
+		key.insert(elem.first.size(),keymaxlength-elem.first.size(),' ');
+		std::cout<<indent<<"  "<<key<<" "<<elem.second.at(0)<<" "<<elem.second.at(1)<<std::endl;
+	}
+}
+void revert(){
+}
+int uninstall(const boost::filesystem::path& pwd,
+							const boost::filesystem::path& db,
+							const std::vector<std::string>& arg){
+
+	if(arg.size()==0){
+		log("Uninstalling all packages:");
+		boost::filesystem::directory_iterator end_iter;
+		for(boost::filesystem::directory_iterator dir_iter(db) ; dir_iter != end_iter ; ++dir_iter){
+			log("  "+dir_iter->path().filename().string());
+			boost::filesystem::path md5sumstxt(dir_iter->path()/"content.txt");
+			std::ifstream f(md5sumstxt.string());
+			if(!f.good())return err1("open "+md5sumstxt.string());
+			std::string s;
+			while(std::getline(f,s)){
+				try{
+					boost::filesystem::remove(pwd/s);
+				}catch(std::exception const& e){
+					return err1(e.what());
+				}
+			}
+			f.close();
+			try{
+				boost::filesystem::remove_all(dir_iter->path());
+			}catch(std::exception const& e){
+				return err1(e.what());
 			}
 		}
 	}
-	// Everything's done well, remove all *.old files --------------------------
-	return removeold();
-}
-int repo(const std::string& repo){
-/*
-Example of the packages-file in a repo:
--------------------------------------------------------------------------------
-package1_1.2.3-4.zip
-package2_5.6.7-8.zip
--------------------------------------------------------------------------------
-*/
-	boost::filesystem::path r(repo);
-	if(boost::filesystem::exists(r)){std::cout<<"*** Error! Already exists: "<<r.filename().string()<<std::endl;return 1;}
-	if(!boost::filesystem::create_directories(r)){std::cout<<"*** Error creating: "<<r.filename().string()<<std::endl;return 1;}
-
-	std::ofstream f("packages");
-	boost::filesystem::directory_iterator end_iter;
-	for (boost::filesystem::directory_iterator dir_itr(boost::filesystem::path(pwd.c_str()));dir_itr != end_iter;++dir_itr){
-		std::string filename = boost::filesystem::relative(dir_itr->path()).string();
-		if (filename.size()<5) continue;                             // string(".zip").size() == 4
-		if(filename.compare(filename.size()-4,4,".zip")!=0)continue; //
-		if(!copy(filename,repo)){std::cout<<"*** Error copying package to the repo!"<<std::endl;return 1;}
-		f << dir_itr->path().filename().string() << "\n";
-	}
-	f.close();
-	if(!copy("packages",repo)){std::cout<<"*** Error copying packages-file!"<<std::endl;return 1;}
-	boost::filesystem::remove(boost::filesystem::path("packages"));
 	return 0;
 }
+int install_recursively(const boost::filesystem::path& pwd,
+												const boost::filesystem::path& db,
+												const boost::filesystem::path& archive,
+												const std::string& compressapp,
+												std::unordered_map<std::string,std::vector<std::string> >& map,
+												std::string package){
+	std::string s;
 
-bool create(const std::string& dir){
-	if(!isdir(dir)){std::cout << "*** Error! Not a directory: " << dir << std::endl;return 1;}
-	if(!isdir(dir+"/CONTENT")){std::cout << "*** Error! No CONTENT subdirectory" << std::endl;return 1;}
-	if(!isdir(dir+"/PACKAGE")){std::cout << "*** Error! No PACKAGE subdirectory" << std::endl;return 1;}
+	// Проверяем, есть ли вообще пакет в репах из sources.txt
+	std::unordered_map<std::string,std::vector<std::string> >::const_iterator it = map.find(package);
+	if(it==map.end())
+		return err1("Package not found in repos in sources.txt: "+package);
 
-	std::ifstream fcontrol(dir+"/PACKAGE/control");
-	if (!fcontrol.good()){std::cout << "*** Error openning: " << dir+"/PACKAGE" << std::endl;}
+	// Удаляем устаревший пакет, если надо
+	boost::filesystem::path unpacked = db/boost::filesystem::path(package);
+	boost::filesystem::path controltxt(unpacked/"control.txt");
+	boost::filesystem::path contenttxt(unpacked/"content.txt");
+	std::ifstream fcontroltxt(controltxt.string());
+	bool install = true;
+	if(fcontroltxt.good()){
+		std::string version;
+		while (std::getline(fcontroltxt,s)){
+			if (!std::strncmp(s.c_str(), "Version: ", strlen("Version: "))){
+				version = s.substr(std::string("Version: ").size());
+				break;
+			}
+		}
+		fcontroltxt.close();
+		fcontroltxt.clear();
+		if ((it->second.at(0)).compare(version)){
+			log("Uninstall old version "+version);
+			std::ifstream fcontenttxt(contenttxt.string());
+			if(!fcontenttxt.good())return err1("Open "+contenttxt.string());
+			while(std::getline(fcontenttxt,s)){
+				try{
+					boost::filesystem::remove(pwd/s);
+				}catch(std::exception const& e){
+					return err1(e.what());
+				}
+			}
+			fcontenttxt.close();
+			try{
+				boost::filesystem::remove_all(unpacked);
+			}catch(std::exception const& e){
+				return err1(e.what());
+			}
+		}else{
+			log("Already installed "+package+" "+version);
+			install = false;
+		}
+	}
 
-	std::string package;
+	// Производим установку пакета (если надо)
+	if (install) {
+		// Выкачиваем
+		std::string from = it->second.at(1);
+		std::string to   = (archive/boost::filesystem::path(package+"_"+it->second.at(0)+".zip")).string();
+		log("Donwload "+from);
+		if(download(from,to)>0) return err1("Download");
+
+		// Распаковываем
+		std::string cmd;
+	#if defined(_WIN32) || defined(WIN32)
+		cmd = compressapp+" x \""+to+"\" -o\""+unpacked.string()+"\" -y > nul";
+	#else
+		cmd = compressapp+" x \""+to+"\" -o\""+unpacked.string()+"\" -y > /dev/null";
+	#endif
+		log("Unpack "+cmd);
+		if (std::system(cmd.c_str())!=0)return err1("Unpack");
+
+		// Переносим содержимое в песочницу и заполняем content.txt
+		boost::filesystem::path content(unpacked/"CONTENT");
+		std::vector<boost::filesystem::path> paths;
+		std::string relativepaths;
+		std::copy(boost::filesystem::recursive_directory_iterator(content.string()),
+							boost::filesystem::recursive_directory_iterator(),
+							std::back_inserter(paths));
+		for(const auto& path: paths){
+			if(!boost::filesystem::is_directory(path)){
+				boost::filesystem::path relative((path.string()).substr(content.string().size()+1,path.string().size()));
+				relativepaths+=relative.string()+"\n";
+				boost::filesystem::path moveto(pwd/relative);
+				boost::filesystem::path dir = moveto.parent_path();
+				if(!boost::filesystem::is_directory(dir))
+					try{boost::filesystem::create_directories(dir);}catch(std::exception const& e){return err1(e.what());}
+				if(boost::filesystem::exists(moveto)){
+					return err1("File already exists: "+moveto.string());
+				}else{
+					try{boost::filesystem::remove(moveto);}catch(std::exception const& e){return err1(e.what());}
+				}
+				try{boost::filesystem::rename(path,moveto);}catch(std::exception const& e){return err1(e.what());}
+			}
+		}
+		std::ofstream fcontenttxt(contenttxt.string());
+		if(fcontenttxt.bad())return err1("Open "+contenttxt.string());
+		fcontenttxt<<relativepaths;
+		fcontenttxt.close();
+	}
+
+	// Идём дальше по рекурсивно по дереву зависимостей
+	fcontroltxt.open(controltxt.string());
+	if(fcontroltxt.bad())return err1("Open "+controltxt.string());
+	std::string depends;
+	while (std::getline(fcontroltxt,s)){
+		if (!std::strncmp(s.c_str(), "Depends: ", strlen("Depends: "))){
+			depends = s.substr(std::string("Depends: ").size());
+			break;
+		}
+	}
+	fcontroltxt.close();
+	if(!depends.empty()){
+		std::istringstream issdepends(depends);
+		std::vector<std::string> dependantpackages{std::istream_iterator<std::string>{issdepends},
+																							 std::istream_iterator<std::string>{}};
+		for(const auto& dependantpackage: dependantpackages){
+			install_recursively(pwd,db,archive,compressapp,map,dependantpackage);
+		}
+	}
+
+	return 0;
+}
+int install(const boost::filesystem::path& wd,
+						const boost::filesystem::path& xpt,
+						const boost::filesystem::path& sourcestxt,
+						const boost::filesystem::path& db,
+						const boost::filesystem::path& session,
+						const std::string& compressapp,
+						const std::vector<std::string>& arg){
+	boost::filesystem::path packages(session/"packages");
+	boost::filesystem::path urls(session/"urls");
+	boost::filesystem::path archive(session/"archive");
+	try{
+		boost::filesystem::create_directories(urls);
+		boost::filesystem::create_directories(packages);
+		boost::filesystem::create_directories(archive);
+	}catch(std::exception const& e){
+		return err1(e.what());
+	}
+
+	log("Parsing: "+sourcestxt.string());
+	std::vector<std::string> repos;
+	std::string tag = (arg.size()>=3 && arg.at(arg.size()-2)=="@") ? arg.at(arg.size()-1) : "";
+	std::string mapped;
+	std::ifstream f(sourcestxt.string());
+	if(!f.good())return err1("open "+sourcestxt.string());
+	std::string s;        int n=0;
+	while(std::getline(f, s)){n++;s=s.substr(0,s.find("#"));if(s.empty())continue;
+		if(!std::strncmp(s.c_str(), "map ", strlen("map "))){
+			if(!mapped.empty())continue;
+			std::istringstream iss(s);
+			std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},std::istream_iterator<std::string>{}};
+			if (tokens.size()<3) return err1("map must have at least 3 words: "+sourcestxt.string()+":"+std::to_string(n));
+			for(auto const& token: tokens){if(token==tag){mapped=tokens.at(1);break;}}
+			continue;
+		}
+		if(mapped.empty())mapped=tag;
+		if(!std::strncmp(s.c_str(), "repo ", strlen("repo "))){
+			std::istringstream iss(s);
+			std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},std::istream_iterator<std::string>{}};
+			if(tokens.size()<2)return err1("repo must have at least 2 words: "+sourcestxt.string()+":"+std::to_string(n));
+			if(tokens.size()==2)
+				repos.push_back(tokens.at(1));
+			else {
+				bool hasany=false;
+				bool includethis=false;
+				for(auto const& token: tokens){
+					if(token=="any")hasany=true;
+					if(token==mapped)includethis=true;
+				}
+				if(includethis){
+					repos.push_back(tokens.at(1)+"/"+mapped);
+					if(hasany)repos.push_back(tokens.at(1)+"/any");
+				}
+			}
+		}
+	}
+
+	log("Downloading from remotes:");
+	for(auto const& repo: repos){
+		std::string saveas = repo+".txt";
+		boost::replace_all(saveas, "http://", ""); //
+		boost::replace_all(saveas, "\\\\",    ""); // http://127.0.0.1:8080/repos/project/6.6.6/any
+		boost::replace_all(saveas, ":",      "-"); //        ->
+		boost::replace_all(saveas, "/",      "-"); //        packages-127.0.0.1-8080-repos-project-6.6.6-any.txt
+		boost::replace_all(saveas, "\\",     "-"); //
+		std::string from = repo+"/packages.txt";
+		std::string to   = (packages/saveas).string();
+		int code = download(from, to);
+		if (code!=0) return err1("curl code="+std::to_string(code)+"\nfrom="+from+"\nto="+to);
+		to = (urls / boost::filesystem::path(saveas)).string();
+		std::ofstream f(to);
+		f << repo;
+		f.close();
+	}
+
+	log("Creating map of all available packages:");
+	std::unordered_map<std::string, std::vector<std::string> > map;
+	log("  Parsing files:");
+	boost::filesystem::directory_iterator end_iter;
+	for(boost::filesystem::directory_iterator dir_iter(packages) ; dir_iter != end_iter ; ++dir_iter){
+		log("    ~"+(urls / dir_iter->path().filename()).string());
+		std::string url;
+		std::ifstream furl((urls / dir_iter->path().filename()).string());std::getline(furl,url);furl.close();
+		if(url.empty())return err1("reading session/urls");
+		log("    ~"+dir_iter->path().string());
+        std::ifstream fpackages(dir_iter->path().string());
+		std::string s;                    int n=0;
+		while(std::getline(fpackages,s)){   ++n;
+			boost::trim(s);
+			if(s.empty())continue;
+			std::string filename = s;
+			std::string package;
+			std::string version;
+            boost::smatch match;
+            if(boost::regex_search(s, match, boost::regex("([a-zA-Z0-9.-]+)_([a-zA-Z0-9.-]+).zip"))){
+				package = match[1];
+				version = match[2];
+            }else
+                return err1("parsing line "+std::to_string(n)+": `"+s+"`");
+			if(map.count(package)>0){
+				return err1("same name package in two different repositories:\n1>"+url+"/"+filename+"\n2>"+map.find(package)->second.at(1));
+			}
+			map.insert(std::pair<std::string, std::vector<std::string> >(package,std::vector<std::string>{version,url+"/"+filename}));
+		}
+		f.close();
+	}log(map,"Map:","    ");
+
+	for(const auto& package:arg){
+		if(package=="@")break;
+		if(install_recursively(wd,db,archive,compressapp,map,package))
+			return 1;
+	}
+
+	return 0;
+}
+int create(const boost::filesystem::path& pwd, const boost::filesystem::path& compressapp, const std::string& arg){
+	boost::filesystem::path packagesource = boost::filesystem::canonical(arg);
+	boost::filesystem::path content(packagesource/"CONTENT");
+	if(!boost::filesystem::is_directory(packagesource))return err1("not a directory: "+packagesource.string());
+	if(!boost::filesystem::is_directory(content))      return err1("not a directory: "+content.string());
+	if(!boost::filesystem::is_directory(packagesource))      return err1("not a directory: "+packagesource.string());
+
+	boost::filesystem::path controltxt(packagesource/"control.txt");
+	std::ifstream fcontroltxt(controltxt.string());
+	if(!fcontroltxt.good())return err1("open "+controltxt.string());
+
+	std::string name = (packagesource.filename()).string();
 	std::string version;
 	std::string depends;
 	std::string s;
-	while (std::getline(fcontrol, s)){
-		if (!std::strncmp(s.c_str(), "Package: ", strlen("Package: "))) package = s.substr(std::string("Package: ").size());
+	while (std::getline(fcontroltxt,s)){
 		if (!std::strncmp(s.c_str(), "Version: ", strlen("Version: "))) version = s.substr(std::string("Version: ").size());
 		if (!std::strncmp(s.c_str(), "Depends: ", strlen("Depends: "))) depends = s.substr(std::string("Depends: ").size());
 	}
-	if (!package.size()) {std::cout << "*** Error! No \"Package: \" line in the control file" << std::endl;return 1;}
-	if (!version.size()) {std::cout << "*** Error! No \"Version: \" line in the control file" << std::endl;return 1;}
-	if (!depends.size()) {std::cout << "*** Error! No \"Depends: \" line in the control file" << std::endl;return 1;}
+	fcontroltxt.close();
+	if (name.empty())    return err1("package name");
+	if (version.empty()) return err1("package version");
 
-	std::ofstream fsize(dir+"/PACKAGE/size");
-	std::ofstream fmd5sums(dir+"/PACKAGE/md5sums");
-	std::ofstream fmd5sum(dir+"/PACKAGE/md5sum");
-	fsize.close();
-	fmd5sums.close();
-	fmd5sum.close();
+	boost::filesystem::path zip(pwd/(name+"_"+version+".zip"));
+	if(boost::filesystem::exists(zip))return err1("file already exists: "+zip.string());
 
-	std::string cmd;
-#if defined(_WIN32) || defined(WIN32)
-	std::string app = (boost::filesystem::path(exd) / boost::filesystem::path("7za.exe")).string();
-	cmd = app+" a \""+pwd+"\\"+package+"_"+version+".zip\" \""+dir+"/*\"";
-#else
-#endif
-	std::cout << cmd << std::endl;
-	if (std::system(cmd.c_str()) != 0){std::cout << "*** Error executing: " << cmd; return false;}
-	return true;
+		std::string cmd = compressapp.string()+" a \""+zip.string()+"\" \"./"+arg+"/*\"";
+	if (std::system(cmd.c_str()) != 0)return err1(cmd);
+	return 0;
 }
-
 int main(int argc, char* argv[]){
-	exd = boost::filesystem::system_complete(boost::filesystem::path(argv[0])).parent_path().string();
-
+	std::string exedir = boost::filesystem::system_complete(boost::filesystem::path(argv[0])).parent_path().string();
+	boost::filesystem::path wd;
 	int shift;
-	if (argc > 2 && !strcmp(argv[1],"pwd")){
-		if (!isdir(std::string(argv[2]))){std::cout << "*** Error! Not a directory: " << argv[2] << std::endl; return 1;}
-		pwd = std::string(argv[2]);
+	if (argc > 2 && !strcmp(argv[1],"wd")){
+		if (!boost::filesystem::is_directory(std::string(argv[2]))){std::cout << "*** Error! Not a directory: " << argv[2] << std::endl; return 1;}
+		wd = std::string(argv[2]);
 		shift = 2; // parse argv "plus two" as if pwd was not passed
 	}else{
-		pwd = ".";
+		wd = ".";
 		shift = 0;
 	}
-	varxptpath = boost::filesystem::path(pwd+"/var/xpt");
-	if(!boost::filesystem::exists(varxptpath))if(!boost::filesystem::create_directories(varxptpath)){std::cout<<"*** Error creating "<<varxptpath.string()<<std::endl;return false;}
-	varxptpackagespath = boost::filesystem::path(pwd+"/var/xpt/packages");
-	if(!boost::filesystem::exists(varxptpackagespath))if(!boost::filesystem::create_directories(varxptpackagespath)){std::cout<<"*** Error creating "<<varxptpackagespath.string()<<std::endl;return false;}
+	wd = wd.make_preferred().string();
+    std::string compressapp;
+#if defined(_WIN32) || defined(WIN32)
+    compressapp = (boost::filesystem::system_complete(boost::filesystem::path(argv[0])).parent_path()/boost::filesystem::path("7za.exe")).string();
+#else
+    compressapp = "7za";
+#endif
+	if(argc==shift+3&&!std::strcmp(argv[shift+1],"create"))return create(wd, compressapp, std::string(argv[shift+2]));
 
-	if (argc == shift+3 && !std::strcmp(argv[shift+1],"create")) return create(std::string(argv[shift+2]));
-	if (argc == shift+3 && !std::strcmp(argv[shift+1],"repo")) return repo(std::string(argv[shift+2]));
-	if (argc >  shift+3 && !std::strcmp(argv[shift+1],"install")) return install(std::vector<std::string>(argv + 2 + shift, argv + argc));
+	boost::filesystem::path xpt(wd/"etc"/"xpt");
+	boost::filesystem::path db(xpt/"db");
+	boost::filesystem::path session(xpt/"session");
+	boost::filesystem::path sourcestxt(xpt/"sources.txt");
+	try{
+		if(!boost::filesystem::exists(xpt))    boost::filesystem::create_directories(xpt);
+		if(!boost::filesystem::exists(db))     boost::filesystem::create_directories(db);
+		if( boost::filesystem::exists(session))boost::filesystem::remove_all(session);
+																					 boost::filesystem::create_directories(session);
+	}catch(std::exception const& e){
+		return err1(e.what());
+	}
+	if(!boost::filesystem::exists(sourcestxt)){
+		std::ofstream fsourcestxt(sourcestxt.string());
+		fsourcestxt.close();
+	}
+	std::ofstream argvs((session / boost::filesystem::path("argvs.txt")).string());
+	std::copy(argv, argv+argc, std::ostream_iterator<std::string>(argvs," "));
+	argvs.close();
+	if(argc>shift+2&&!std::strcmp(argv[shift+1],"install")) return install(wd,xpt,sourcestxt,db,session,compressapp,std::vector<std::string>(argv+2+shift,argv+argc));
 
-	std::cout << "*** Error! Unknown command line options! Read the manual below:" << std::endl << std::endl;
+	if(argc>1)err1("Unknown command line options! See usage:");
 	usage();
 	return 1;
 }
