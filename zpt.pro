@@ -1,6 +1,6 @@
 DEFINES += "VERSION=\"\\\"$$system(git describe --always)\\\"\""
 
-TARGET = xpt
+TARGET = zpt
 TEMPLATE = app
 CONFIG += console c++11
 CONFIG -= app_bundle
@@ -14,5 +14,5 @@ LIBS += -llibcurl_a
 LIBS += -lcurl -lboost_filesystem -lboost_system -lboost_regex
 }
 
-SOURCES += xpt.cpp
+SOURCES += zpt.cpp
 DESTDIR = $$PWD
