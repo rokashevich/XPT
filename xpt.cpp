@@ -2,7 +2,7 @@
 #include <boost/version.hpp>
 #include <curl/curlver.h>
 void usage(){
-	std::cout<<"ZPT "<<VERSION<<" "
+	std::cout<<"XPT "<<VERSION<<" "
 					 <<"("
 					 <<"Boost "<<BOOST_VERSION/100000<<"."
 										 <<BOOST_VERSION/100%1000<<"."
@@ -10,8 +10,9 @@ void usage(){
 					 <<"Curl " <<LIBCURL_VERSION
 					 <<")"<<std::endl;
 	std::cout<<"Usage:"<<std::endl;
-	std::cout<<"  zpt [wd <directory to create zip in>] create <unzipped package>"<<std::endl;
-	std::cout<<"  zpt [wd <sandbox>] install <package 1> <package N> [@ <tag>]"<<std::endl;
+	std::cout<<"  xpt [wd <directory to create zip in>] create <unzipped package>"<<std::endl;
+	std::cout<<"  xpt [wd <sandbox>] install <package 1> <package N> [@ <tag>]"<<std::endl;
+	std::cout<<"  xpt [wd <sandbox>] uninstall"<<std::endl;
 }
 
 #include <sstream>
@@ -138,7 +139,8 @@ void log(const std::unordered_map<std::string, std::vector<std::string> >& map, 
 		std::cout<<indent<<"  "<<key<<" "<<elem.second.at(0)<<" "<<elem.second.at(1)<<std::endl;
 	}
 }
-void o(const std::string& s){std::cout<<s;}
+void revert(){
+}
 int uninstall(const boost::filesystem::path& pwd,
 							const boost::filesystem::path& db,
 							const std::vector<std::string>& arg){
@@ -291,7 +293,7 @@ int install_recursively(const boost::filesystem::path& pwd,
 	return 0;
 }
 int install(const boost::filesystem::path& wd,
-						const boost::filesystem::path& zpt,
+						const boost::filesystem::path& xpt,
 						const boost::filesystem::path& sourcestxt,
 						const boost::filesystem::path& db,
 						const boost::filesystem::path& session,
@@ -326,21 +328,21 @@ int install(const boost::filesystem::path& wd,
 		}
 		if(mapped.empty())mapped=tag;
 		if(!std::strncmp(s.c_str(), "repo ", strlen("repo "))){
-			o("Processing "+s+"\n");
 			std::istringstream iss(s);
 			std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},std::istream_iterator<std::string>{}};
 			if(tokens.size()<2)return err1("repo must have at least 2 words: "+sourcestxt.string()+":"+std::to_string(n));
-			if(tokens.size()==2) {
-				std::string url=tokens.at(1);
-				o(" + "+url+"\n");
-				repos.push_back(url);
-			} else {
+			if(tokens.size()==2)
+				repos.push_back(tokens.at(1));
+			else {
+				bool hasany=false;
+				bool includethis=false;
 				for(auto const& token: tokens){
-					if(token=="any"||token==tag||token==mapped){
-						std::string url=tokens.at(1)+"/"+token;
-						o(" + "+url+"\n");
-						repos.push_back(url);
-					}
+					if(token=="any")hasany=true;
+					if(token==mapped)includethis=true;
+				}
+				if(includethis){
+					repos.push_back(tokens.at(1)+"/"+mapped);
+					if(hasany)repos.push_back(tokens.at(1)+"/any");
 				}
 			}
 		}
@@ -455,12 +457,12 @@ int main(int argc, char* argv[]){
 #endif
 	if(argc==shift+3&&!std::strcmp(argv[shift+1],"create"))return create(wd, compressapp, std::string(argv[shift+2]));
 
-	boost::filesystem::path zpt(wd/"etc"/"zpt");
-	boost::filesystem::path db(zpt/"db");
-	boost::filesystem::path session(zpt/"session");
-	boost::filesystem::path sourcestxt(zpt/"sources.txt");
+	boost::filesystem::path xpt(wd/"etc"/"xpt");
+	boost::filesystem::path db(xpt/"db");
+	boost::filesystem::path session(xpt/"session");
+	boost::filesystem::path sourcestxt(xpt/"sources.txt");
 	try{
-		if(!boost::filesystem::exists(zpt))    boost::filesystem::create_directories(zpt);
+		if(!boost::filesystem::exists(xpt))    boost::filesystem::create_directories(xpt);
 		if(!boost::filesystem::exists(db))     boost::filesystem::create_directories(db);
 		if( boost::filesystem::exists(session))boost::filesystem::remove_all(session);
 																					 boost::filesystem::create_directories(session);
@@ -474,7 +476,7 @@ int main(int argc, char* argv[]){
 	std::ofstream argvs((session / boost::filesystem::path("argvs.txt")).string());
 	std::copy(argv, argv+argc, std::ostream_iterator<std::string>(argvs," "));
 	argvs.close();
-	if(argc>shift+2&&!std::strcmp(argv[shift+1],"install")) return install(wd,zpt,sourcestxt,db,session,compressapp,std::vector<std::string>(argv+2+shift,argv+argc));
+	if(argc>shift+2&&!std::strcmp(argv[shift+1],"install")) return install(wd,xpt,sourcestxt,db,session,compressapp,std::vector<std::string>(argv+2+shift,argv+argc));
 
 	if(argc>1)err1("Unknown command line options! See usage:");
 	usage();
