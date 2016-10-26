@@ -313,7 +313,7 @@ int install(const boost::filesystem::path& wd,
 	log("Parsing: "+sourcestxt.string());
 	std::vector<std::string> repos;
 	std::string tag = (arg.size()>=3 && arg.at(arg.size()-2)=="@") ? arg.at(arg.size()-1) : "";
-	std::string mapped;
+	std::vector<std::string> mapped;
 	std::ifstream f(sourcestxt.string());
 	if(!f.good())return err1("open "+sourcestxt.string());
 	std::string s;        int n=0;
@@ -323,10 +323,12 @@ int install(const boost::filesystem::path& wd,
 			std::istringstream iss(s);
 			std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},std::istream_iterator<std::string>{}};
 			if (tokens.size()<3) return err1("map must have at least 3 words: "+sourcestxt.string()+":"+std::to_string(n));
-			for(auto const& token: tokens){if(token==tag){mapped=tokens.at(1);break;}}
+			if (tokens.at(1)==tag){
+				mapped = tokens;
+				std::vector<std::string>(mapped.begin()+2, mapped.end()).swap(mapped);
+			}
 			continue;
 		}
-		if(mapped.empty())mapped=tag;
 		if(!std::strncmp(s.c_str(), "repo ", strlen("repo "))){
 			std::istringstream iss(s);
 			std::vector<std::string> tokens{std::istream_iterator<std::string>{iss},std::istream_iterator<std::string>{}};
@@ -335,14 +337,19 @@ int install(const boost::filesystem::path& wd,
 				repos.push_back(tokens.at(1));
 			else {
 				bool hasany=false;
-				bool includethis=false;
+				std::string usetag="";
 				for(auto const& token: tokens){
 					if(token=="any")hasany=true;
-					if(token==mapped)includethis=true;
+					if(token==tag)
+						usetag=tag;
+					else
+						if(std::find(mapped.begin(), mapped.end(), token) != mapped.end())
+							usetag=token;
+					if (usetag!="")break;
 				}
-				if(includethis){
-					repos.push_back(tokens.at(1)+"/"+mapped);
+				if(usetag!=""){
 					if(hasany)repos.push_back(tokens.at(1)+"/any");
+					repos.push_back(tokens.at(1)+"/"+usetag);
 				}
 			}
 		}
