@@ -262,6 +262,11 @@ int install_recursively(const boost::filesystem::path& pwd,
 					try{boost::filesystem::remove(moveto);}catch(std::exception const& e){return err1(e.what());}
 				}
 				try{boost::filesystem::rename(path,moveto);}catch(std::exception const& e){return err1(e.what());}
+			}else{
+				boost::filesystem::path relative((path.string()).substr(content.string().size()+1,path.string().size()));
+				boost::filesystem::path dir(pwd/relative);
+				if(!boost::filesystem::is_directory(dir))
+					try{boost::filesystem::create_directories(dir);}catch(std::exception const& e){return err1(e.what());}
 			}
 		}
 		std::ofstream fcontenttxt(contenttxt.string());
