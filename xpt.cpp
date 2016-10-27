@@ -286,10 +286,10 @@ int install_recursively(const boost::filesystem::path& pwd,
 		std::vector<std::string> dependantpackages{std::istream_iterator<std::string>{issdepends},
 																							 std::istream_iterator<std::string>{}};
 		for(const auto& dependantpackage: dependantpackages){
-			install_recursively(pwd,db,archive,compressapp,map,dependantpackage);
+			if (install_recursively(pwd,db,archive,compressapp,map,dependantpackage)!=0)
+				return 1;
 		}
 	}
-
 	return 0;
 }
 int install(const boost::filesystem::path& wd,
