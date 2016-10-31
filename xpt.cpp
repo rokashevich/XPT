@@ -257,6 +257,7 @@ int install_recursively(const boost::filesystem::path& pwd,
 				if(!boost::filesystem::is_directory(dir))
 					try{boost::filesystem::create_directories(dir);}catch(std::exception const& e){return err1(e.what());}
 				if(boost::filesystem::exists(moveto)){
+					try{boost::filesystem::remove_all(unpacked);}catch(std::exception const& e){return err1(e.what());}
 					return err1("File already exists: "+moveto.string());
 				}else{
 					try{boost::filesystem::remove(moveto);}catch(std::exception const& e){return err1(e.what());}
