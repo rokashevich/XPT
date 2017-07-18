@@ -12,7 +12,7 @@ session_tags_dir = os.path.join(session_dir, 'tags')
 
 class Session:
     def __init__(self):
-        pass
+        self.dict_package_url = dict()
 
     def update(self):
         if os.path.exists(session_dir):
@@ -32,8 +32,18 @@ class Session:
         return 0
 
     def install(self, nargs):
-        return 0
+        tag = nargs[-1] if len(nargs) > 2 and nargs[-2] == '@' else '_no_tag_'
+        packages = nargs[:-2] if len(nargs) > 2 and nargs[-2] == '@' else nargs
+        for url in open(os.path.join(session_tags_dir, tag)).read().splitlines():
+            package = url.split('/')[-1].split('_')[0]
+            if package in self.dict_package_url:
+                print('*** ERROR: DUPLICATE NAME')
+                print('**  Package 1: ' + url)
+                print('**  Package 2: ' + self.dict_package_url.get(package))
+                print('*** Tag: ' + tag)
+                sys.exit(1)
 
+        return 0
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='xpt')
