@@ -5,13 +5,15 @@ import sys
 
 sources_txt = os.path.join('etc', 'xpt', 'sources.txt')
 
+maps = List()
+
 class Session:
     def __init__(self):
         pass
 
     def update(self):
         for line in open(sources_txt).read().splitlines():
-            if re.match('^map |^repo ', line):
+            if re.match('^repo ', line):
                 print(line)
         return 0
 
