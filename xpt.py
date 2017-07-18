@@ -5,7 +5,6 @@ import sys
 
 sources_txt = os.path.join('etc', 'xpt', 'sources.txt')
 
-maps = List()
 
 class Session:
     def __init__(self):
