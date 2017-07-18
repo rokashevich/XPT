@@ -10,6 +10,14 @@ session_dir = os.path.join('var', 'xpt', 'session')
 session_tags_dir = os.path.join(session_dir, 'tags')
 
 
+def bytes_to_human(num, suffix='B'):
+    for unit in ['','K','M','G','T','P','E','Z']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Y', suffix)
+
+
 class Session:
     def __init__(self):
         self.dict_package_url = dict()
@@ -28,21 +36,35 @@ class Session:
                     print('get ' + packages_txt_url)
                     with open(os.path.join(session_tags_dir, tag if tag else '_no_tag_'), 'a') as f:
                         for package in urllib.request.urlopen(packages_txt_url).read().decode().splitlines():
-                            f.write(url + '/' + package + '\n')
+                            f.write(url + '/' + tag + '/' + package + '\n')
         return 0
 
     def install(self, nargs):
         tag = nargs[-1] if len(nargs) > 2 and nargs[-2] == '@' else '_no_tag_'
-        packages = nargs[:-2] if len(nargs) > 2 and nargs[-2] == '@' else nargs
         for url in open(os.path.join(session_tags_dir, tag)).read().splitlines():
             package = url.split('/')[-1].split('_')[0]
             if package in self.dict_package_url:
                 print('*** ERROR: DUPLICATE NAME')
                 print('**  Package 1: ' + url)
-                print('**  Package 2: ' + self.dict_package_url.get(package))
-                print('*** Tag: ' + tag)
+                print('*** Package 2: ' + self.dict_package_url.get(package))
                 sys.exit(1)
+            self.dict_package_url[package] = url
+        packages = nargs[:-2] if len(nargs) > 2 and nargs[-2] == '@' else nargs
+        for package in packages:
+            if self.install_recursively(package) > 0:
+                return 1
+        return 0
 
+    def install_recursively(self, package):
+        sys.stdout.write('Installing ' + package)
+        if package not in self.dict_package_url.keys():
+            print(' **** ERROR: PACKAGE NOT FOUND')
+            return 1
+        url = self.dict_package_url[package]
+        sys.stdout.write(' ' + url)
+        size = bytes_to_human(int(urllib.request.urlopen(url).info().get('Content-Length', -1)))
+        sys.stdout.write(' ' + size)
+        sys.stdout.write('\n')
         return 0
 
 if __name__ == '__main__':
