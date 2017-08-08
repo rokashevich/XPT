@@ -8,6 +8,7 @@ import sys
 sources_txt = os.path.join('etc', 'xpt', 'sources.txt')
 session_dir = os.path.join('var', 'xpt', 'session')
 session_tags_dir = os.path.join(session_dir, 'tags')
+cache_dir = os.path.join('var', 'xpt', 'cache')
 
 
 def bytes_to_human(num, suffix='B'):
@@ -56,6 +57,9 @@ class Session:
         return 0
 
     def install_recursively(self, package):
+        # Скачиваем файл в packagename.zip_, после переименовываем в packagename.zip.
+        # Так же в packagename.zip.info храним строку вида "url size".
+
         sys.stdout.write('Installing ' + package)
         if package not in self.dict_package_url.keys():
             print(' **** ERROR: PACKAGE NOT FOUND')
@@ -64,6 +68,36 @@ class Session:
         sys.stdout.write(' ' + url)
         size = bytes_to_human(int(urllib.request.urlopen(url).info().get('Content-Length', -1)))
         sys.stdout.write(' ' + size)
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+        zip = os.path.join(cache_dir, url.split('/')[-1])
+        info_size = None
+        info_url = None
+        saved_size = None
+        if os.path.exists(zip+'.info'):
+            info_size, info_url = open(zip + '.info').read().strip().split()
+        if os.path.exists(zip):
+            saved_size = os.path.getsize(zip)
+        if info_url != url:
+            if os.path.exists(zip):
+                os.remove(zip)
+            if os.path.exists(zip+'.info'):
+                os.remove(zip)
+
+        print('\n'+info_size+' '+info_url+' '+saved_size)
+        #     print(saved_size + ' ' + saved_url)
+        # if url == saved_url and size == saved_size:
+        #     return 0
+        # if url != saved_url:
+        #     if os.path.exists()
+        #
+        # if os.path.exists(zip) and os.path.exists(zip+'.info'):
+        #     print(saved_size +' '+ saved_url)
+        #     if url != saved_url:
+        #         os.remove(zip)
+        #         os.remove(zip+'.info')
+
+
         sys.stdout.write('\n')
         return 0
 
