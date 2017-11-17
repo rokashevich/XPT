@@ -1,7 +1,0 @@
-include/
-lib/
-*.zip
-*.ilk
-*.pdb
-*.user*
-xpt.exe
