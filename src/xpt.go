@@ -32,7 +32,9 @@ func update() int {
 		os.Exit(1)
 	}
 	for _, element := range strings.Split(string(dat), "\n") {
-		fmt.Println(">" + element)
+		if strings.HasPrefix(element, "repo ") {
+			fmt.Println(element)
+		}
 	}
 	return 0
 }
