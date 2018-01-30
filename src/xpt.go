@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 )
 
 func main() {
@@ -17,10 +18,6 @@ func main() {
 	} else {
 		os.Exit(usage())
 	}
-
-	// for _, element := range args {
-	// 	fmt.Println(element)
-	// }
 }
 
 // var/xpt/update/
@@ -34,7 +31,9 @@ func update() int {
 	if err != nil {
 		os.Exit(1)
 	}
-	fmt.Print(string(dat))
+	for _, element := range strings.Split(string(dat), "\n") {
+		fmt.Println(">" + element)
+	}
 	return 0
 }
 
