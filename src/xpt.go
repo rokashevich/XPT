@@ -7,21 +7,28 @@ import "runtime"
 func main() {
 	fmt.Println("xpt ver. 0.0.0 (" + runtime.Version() + ")")
 
-	command := os.Args[1]
-	if command != "install" {
+	if len(os.Args) == 2 && os.Args[1] == "update" {
+		os.Exit(update())
+	} else if len(os.Args) > 2 && os.Args[1] == "install" {
+		os.Exit(install())
+	} else {
 		usage()
 		os.Exit(1)
 	}
 
-	args := os.Args[2:] // package1 @ tag1 package2 package3 @ tag3 package4
-	if len(args) < 1 {
-		usage()
-		os.Exit(1)
-	}
+	// for _, element := range args {
+	// 	fmt.Println(element)
+	// }
+}
 
-	for _, element := range args {
-		fmt.Println(element)
-	}
+func update() int {
+	fmt.Println("Update")
+	return 0
+}
+
+func install() int {
+	fmt.Println("Install")
+	return 0
 }
 
 type xptPackage struct {
