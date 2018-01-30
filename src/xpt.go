@@ -1,8 +1,11 @@
 package main
 
-import "os"
-import "fmt"
-import "runtime"
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"runtime"
+)
 
 func main() {
 	fmt.Println("xpt ver. 0.0.0 (" + runtime.Version() + ")")
@@ -12,8 +15,7 @@ func main() {
 	} else if len(os.Args) > 2 && os.Args[1] == "install" {
 		os.Exit(install())
 	} else {
-		usage()
-		os.Exit(1)
+		os.Exit(usage())
 	}
 
 	// for _, element := range args {
@@ -21,8 +23,18 @@ func main() {
 	// }
 }
 
+// var/xpt/update/
+//               /packages_without_tag/
+//               /tag1/
+//                    /package1.txt
+//                    /package2.txt
+//               /tag2/
 func update() int {
-	fmt.Println("Update")
+	dat, err := ioutil.ReadFile("sources.txt")
+	if err != nil {
+		os.Exit(1)
+	}
+	fmt.Print(string(dat))
 	return 0
 }
 
@@ -38,6 +50,7 @@ type xptPackage struct {
 	size string
 }
 
-func usage() {
+func usage() int {
 	fmt.Println("use: xpt install package1 @ tag1 package2 package3 @ tag3 package4")
+	return 1
 }
