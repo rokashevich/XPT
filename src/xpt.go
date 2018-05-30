@@ -31,9 +31,12 @@ func update() int {
 	if err != nil {
 		os.Exit(1)
 	}
-	for _, element := range strings.Split(string(dat), "\n") {
-		if strings.HasPrefix(element, "repo ") {
-			fmt.Println(element)
+	for _, line := range strings.Split(string(dat), "\n") {
+		if strings.HasPrefix(line, "repo ") {
+			fmt.Println(line)
+			for _, word := range strings.Split(line, " ") {
+				fmt.Println("!" + word + "?")
+			}
 		}
 	}
 	return 0
