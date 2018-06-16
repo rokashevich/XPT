@@ -59,15 +59,23 @@ func update(sandbox string) int {
 	updateTxt := ""
 
 	updateOne := func(url string, tag string) {
-		packagesTxtURL := url
+		repoURL := url
 		if tag != "notag" {
-			packagesTxtURL += "/" + tag
+			repoURL += "/" + tag
 		}
-		packagesTxtURL += "/packages.txt"
-		fmt.Println(packagesTxtURL)
+		packagesTxtURL := repoURL + "/packages.txt"
 		packagesTxt, err := downloadFile(packagesTxtURL)
 		if err != nil {
 			fmt.Println("!!! Warning: ")
+		}
+		for _, line := range strings.Split(packagesTxt, "\n") {
+			packageFileName := stripCtlAndExtFromUTF8(line)
+			if line == "" {
+				continue
+			}
+			packageURL := repoURL + "/" + packageFileName
+			packageName := strings.SplitN(packageFileName, "_", 2)[0]
+			fmt.Println(packageName + " " + tag + " " + packageURL)
 		}
 	}
 	for _, line := range strings.Split(string(dat), "\n") {
@@ -138,8 +146,7 @@ func downloadFile(url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fmt.Println(buf)
-	return "", nil
+	return buf.String(), nil
 }
 
 /*
