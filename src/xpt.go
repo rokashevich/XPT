@@ -56,9 +56,9 @@ func update(sandbox string) int {
 		os.Exit(1)
 	}
 
-	updateTxt := ""
+	updateTxtContent := ""
 
-	updateOne := func(url string, tag string) {
+	updateOne := func(url string, tag string) string {
 		repoURL := url
 		if tag != "notag" {
 			repoURL += "/" + tag
@@ -68,6 +68,7 @@ func update(sandbox string) int {
 		if err != nil {
 			fmt.Println("!!! Warning: ")
 		}
+		updateTxtContentPart := ""
 		for _, line := range strings.Split(packagesTxt, "\n") {
 			packageFileName := stripCtlAndExtFromUTF8(line)
 			if line == "" {
@@ -75,8 +76,9 @@ func update(sandbox string) int {
 			}
 			packageURL := repoURL + "/" + packageFileName
 			packageName := strings.SplitN(packageFileName, "_", 2)[0]
-			fmt.Println(packageName + " " + tag + " " + packageURL)
+			updateTxtContentPart += packageName + " " + tag + " " + packageURL + "\n"
 		}
+		return updateTxtContentPart
 	}
 	for _, line := range strings.Split(string(dat), "\n") {
 		line = stripCtlAndExtFromUTF8(line)
@@ -89,20 +91,22 @@ func update(sandbox string) int {
 			url := words[1]
 			tags := words[2:]
 			if len(tags) == 0 { // Репозиторий без тэга.
-				updateOne(url, "notag")
+				updateTxtContent += updateOne(url, "notag")
 			} else { // Репозиторий с тегом/тегами.
 				for _, tag := range tags {
-					updateOne(url, tag)
+					updateTxtContent += updateOne(url, tag)
 				}
 			}
 		}
 	}
-	fmt.Println(updateTxt)
-	//f, e := os.Create(filepath.Join(sandbox, "var", "xpt", "update.txt"))
-	//if e != nil {
-	//		panic(e)
-	//}
-	//defer f.Close()
+
+	f, e := os.Create(filepath.Join(sandbox, "update.txt")) // "var", "xpt",
+	if e != nil {
+		panic(e)
+	}
+	defer f.Close()
+	f.WriteString(updateTxtContent)
+	f.Sync()
 	return 0
 }
 
