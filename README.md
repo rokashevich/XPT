@@ -1,2 +1,2 @@
 # xpt
-XPT - eXtremly small Package Tool
+Рекурсивная выкачивалка zip-архивов
