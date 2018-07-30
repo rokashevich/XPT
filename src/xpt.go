@@ -17,6 +17,7 @@ import (
 func main() {
 	// Согласно нашей структуре каталогов xpt лежит в sandbox/etc/xpt.
 	sandbox, _ := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", ".."))
+	fmt.Println("sandbox=" + sandbox)
 
 	// Настраиваем cache-директорию.
 	cache := setupCacheDirectory(sandbox)
@@ -50,7 +51,8 @@ func setupCacheDirectory(sandbox string) string {
 
 func update(sandbox string) int {
 	sourcesTxt := filepath.Join(sandbox, "etc", "xpt", "sources.txt")
-	dat, err := ioutil.ReadFile("sources.txt")
+	fmt.Println("sourcesTxt=" + sourcesTxt)
+	dat, err := ioutil.ReadFile(sourcesTxt)
 	if err != nil {
 		fmt.Println("*** Error: sources.txt not found: " + sourcesTxt)
 		os.Exit(1)
@@ -80,13 +82,14 @@ func update(sandbox string) int {
 		}
 		return updateTxtContentPart
 	}
+	fmt.Println("--- read sources.txt")
 	for _, line := range strings.Split(string(dat), "\n") {
 		line = stripCtlAndExtFromUTF8(line)
 		if strings.HasPrefix(line, "repo ") {
 			// Удаляем двойные пробелы, т.к. строка может быть отформатирована разным кол-вом пробелов для наглядности sources.txt.
 			re := regexp.MustCompile(`[\s\p{Zs}]{2,}`)
 			line = re.ReplaceAllString(line, " ")
-
+			fmt.Println("--- " + line)
 			words := strings.Split(line, " ") // Массив вида [repo http://url tag1 tag2].
 			url := words[1]
 			tags := words[2:]
@@ -98,9 +101,11 @@ func update(sandbox string) int {
 				}
 			}
 		}
+		fmt.Println("--- updateTxtContent=" + updateTxtContent)
 	}
 
-	f, e := os.Create(filepath.Join(sandbox, "update.txt")) // "var", "xpt",
+	os.MkdirAll(filepath.Join(sandbox, "var", "xpt"), os.ModePerm)
+	f, e := os.Create(filepath.Join(sandbox, "var", "xpt", "update.txt"))
 	if e != nil {
 		panic(e)
 	}
