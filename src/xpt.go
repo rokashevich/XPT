@@ -25,6 +25,7 @@ func main() {
 	//
 	// Обрабатываем аргументы командной строки.
 	//
+
 	if len(os.Args) == 2 && os.Args[1] == "update" {
 		os.Exit(update(sandbox))
 	} else if len(os.Args) > 2 && os.Args[1] == "install" {
@@ -116,7 +117,11 @@ func update(sandbox string) int {
 }
 
 func install(sandbox string, cache string) int {
-	fmt.Println("Install")
+	fmt.Println("--- Install")
+	for i, arg := range os.Args[2:] {
+		// print index and value
+		fmt.Println("item", i, "is", arg)
+	}
 	return 0
 }
 
