@@ -79,7 +79,7 @@ func update(sandbox string) int {
 			}
 			packageURL := repoURL + "/" + packageFileName
 			packageName := strings.SplitN(packageFileName, "_", 2)[0]
-			updateTxtContentPart += packageName + " " + tag + " " + packageURL + "\n"
+			updateTxtContentPart += tag + " " + packageName + " " + packageURL + "\n"
 		}
 		return updateTxtContentPart
 	}
@@ -117,11 +117,25 @@ func update(sandbox string) int {
 }
 
 func install(sandbox string, cache string) int {
-	fmt.Println("--- Install")
-	for i, arg := range os.Args[2:] {
-		// print index and value
-		fmt.Println("item", i, "is", arg)
+	packagesToInstall := make(map[string][]string)
+	var tmp []string
+	sep := false
+	for _, arg := range os.Args[2:] {
+		if sep {
+			packagesToInstall[arg] = append(packagesToInstall[arg], tmp...)
+			sep = false
+			tmp = nil
+			continue
+		}
+		if arg == "@" {
+			sep = true
+			continue
+		} else {
+			sep = false
+		}
+		tmp = append(tmp, arg)
 	}
+	fmt.Printf("--- packagesToInstall: %v\n", packagesToInstall)
 	return 0
 }
 
