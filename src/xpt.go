@@ -117,6 +117,8 @@ func update(sandbox string) int {
 }
 
 func install(sandbox string, cache string) int {
+	// Создаём map packagesToInstall вида:
+	// [tag1:[pkg1,pkg2,pkg3]]
 	packagesToInstall := make(map[string][]string)
 	var tmp []string
 	sep := false
