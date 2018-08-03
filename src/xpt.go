@@ -39,11 +39,8 @@ func setupCacheDirectory(sandbox string) string {
 	cache := os.Getenv("XPTCACHE")
 	if cache == "" { // Если XPTCACHE не задан, то используем домашний каталог.
 		u, _ := user.Current()
-		cache = u.HomeDir
+		cache = filepath.Join(u.HomeDir, "xptcache")
 	}
-	// Превращаем D:\svn\program_src в D_svn_program_src для уникальности xptCache
-	re := regexp.MustCompile("[^a-zA-Z0-9]+")
-	cache = filepath.Join(cache, "xptcache", re.ReplaceAllString(sandbox, "_"))
 	if _, err := os.Stat(cache); os.IsNotExist(err) {
 		os.MkdirAll(cache, os.ModePerm)
 	}
@@ -117,28 +114,52 @@ func update(sandbox string) int {
 }
 
 func install(sandbox string, cache string) int {
-	// Создаём map packagesToInstall вида:
-	// [tag1:[pkg1,pkg2,pkg3]]
-	packagesToInstall := make(map[string][]string)
-	var tmp []string
-	sep := false
+	var names []string // Массив названий пакетов для установки.
+	tag := ""          // Тэг этих пакетов.
 	for _, arg := range os.Args[2:] {
-		if sep {
-			packagesToInstall[arg] = append(packagesToInstall[arg], tmp...)
-			sep = false
-			tmp = nil
-			continue
-		}
 		if arg == "@" {
-			sep = true
-			continue
+			tag = os.Args[len(os.Args)-1]
+			break
 		} else {
-			sep = false
+			names = append(names, arg)
 		}
-		tmp = append(tmp, arg)
 	}
-	fmt.Printf("--- packagesToInstall: %v\n", packagesToInstall)
+	fmt.Printf("--- names: %v\n", names)
+	fmt.Printf("--- tag: %s\n", tag)
+
+	var db [][]string // Считаем из update.txt в виде [[tag1 package1 url1], [tag2 package2 url2]].
+	updateTxt := filepath.Join(sandbox, "var", "xpt", "update.txt")
+	dat, err := ioutil.ReadFile(updateTxt)
+	if err != nil {
+		fmt.Println("*** Error: update.txt not found: " + updateTxt)
+		os.Exit(1)
+	}
+	for _, line := range strings.Split(string(dat), "\n") {
+		splits := strings.Split(line, " ")
+		if len(splits) == 3 {
+			db = append(db, splits)
+		}
+	}
+
+	for _, name := range names {
+		installOne(sandbox, cache, name, tag, db)
+	}
 	return 0
+}
+
+func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
+	fmt.Println("--- installOne: " + name)
+	var urls []string
+	for _, check := range db {
+		if check[0] == tag && check[1] == name {
+			urls = append(urls, check[2])
+		}
+	}
+	if len(urls) > 1 {
+		fmt.Printf("*** Error: More than one url for a package: %v\n", urls)
+		os.Exit(1)
+	}
+	fmt.Println(cache)
 }
 
 type xptPackage struct {
@@ -150,7 +171,7 @@ type xptPackage struct {
 
 func usage() int {
 	fmt.Println("xpt ver. 0.0.0 (" + runtime.Version() + ")")
-	fmt.Println("usage: xpt install package1 @ tag1 package2 package3 @ tag3 package4")
+	fmt.Println("usage: xpt install package1 package2 @ tag")
 	return 1
 }
 
