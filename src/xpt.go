@@ -159,7 +159,10 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		fmt.Printf("*** Error: More than one url for a package: %v\n", urls)
 		os.Exit(1)
 	}
-	fmt.Println(cache)
+	cached_file_name := strings.Replace(urls[0], "http://", "", -1)
+	cached_file_name = strings.Replace(cached_file_name, "/", "~", -1)
+	fmt.Println(urls[0])
+	fmt.Println(cached_file_name)
 }
 
 type xptPackage struct {
