@@ -64,7 +64,7 @@ func update(sandbox string) int {
 			repoURL += "/" + tag
 		}
 		packagesTxtURL := repoURL + "/packages.txt"
-		packagesTxt, err := downloadFile(packagesTxtURL)
+		packagesTxt, err := readUrl(packagesTxtURL)
 		if err != nil {
 			fmt.Println("!!! Warning: ")
 		}
@@ -161,8 +161,10 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	}
 	cached_file_name := strings.Replace(urls[0], "http://", "", -1)
 	cached_file_name = strings.Replace(cached_file_name, "/", "~", -1)
+	cached_file_name = filepath.Join(cache, cached_file_name)
 	fmt.Println(urls[0])
 	fmt.Println(cached_file_name)
+	_ = downloadUrl(urls[0], cached_file_name)
 }
 
 type xptPackage struct {
@@ -189,7 +191,7 @@ func stripCtlAndExtFromUTF8(str string) string {
 }
 
 // TODO
-func downloadFile(url string) (string, error) {
+func readUrl(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
@@ -203,14 +205,14 @@ func downloadFile(url string) (string, error) {
 	return buf.String(), nil
 }
 
-/*
 //https://golangcode.com/download-a-file-with-progress/
-func DownloadFile(filepath string, url string) error {
-
+func downloadUrl(url string, filepath string) error {
+	fmt.Println("--- downloading to " + filepath)
 	// Create the file, but give it a tmp file extension, this means we won't overwrite a
 	// file until it's downloaded, but we'll remove the tmp extension once downloaded.
 	out, err := os.Create(filepath)
 	if err != nil {
+		fmt.Println("--- error creating " + filepath)
 		return err
 	}
 	defer out.Close()
@@ -223,9 +225,9 @@ func DownloadFile(filepath string, url string) error {
 	defer resp.Body.Close()
 
 	// Create our progress reporter and pass it to be used alongside our writer
-	//counter := &WriteCounter{}
-	//_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
-	_, err = io.Copy(out, resp.Body)
+	counter := &WriteCounter{}
+	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
+	//_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
 	}
@@ -234,4 +236,18 @@ func DownloadFile(filepath string, url string) error {
 	//fmt.Print("\n")
 
 	return nil
-}*/
+}
+
+// WriteCounter counts the number of bytes written to it. It implements to the io.Writer
+// interface and we can pass this into io.TeeReader() which will report progress on each
+// write cycle.
+type WriteCounter struct {
+	Total uint64
+}
+
+func (wc *WriteCounter) Write(p []byte) (int, error) {
+	n := len(p)
+	wc.Total += uint64(n)
+	fmt.Printf(".")
+	return n, nil
+}
