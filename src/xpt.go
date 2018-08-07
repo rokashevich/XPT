@@ -161,6 +161,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	_ = downloadUrl(urls[0], cached_file_name)
 
 	fmt.Printf("|unzip")
+	// TODO Удалить предыдущую директорию установки если есть
 	_, err := Unzip(cached_file_name, strings.Replace(cached_file_name, ".zip", "", -1))
 	if err != nil {
 		log.Fatal(err)
@@ -193,7 +194,6 @@ func stripCtlAndExtFromUTF8(str string) string {
 	}, str)
 }
 
-// TODO
 func readUrl(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
