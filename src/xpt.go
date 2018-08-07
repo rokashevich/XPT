@@ -99,7 +99,7 @@ func update(sandbox string) int {
 
 func install(sandbox string, cache string) int {
 	var names []string // Массив названий пакетов для установки.
-	tag := ""          // Тэг этих пакетов.
+	tag := "notag"     // Тэг этих пакетов.
 	for _, arg := range os.Args[2:] {
 		if arg == "@" {
 			tag = os.Args[len(os.Args)-1]
