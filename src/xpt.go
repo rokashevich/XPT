@@ -17,14 +17,11 @@ import (
 )
 
 func main() {
-	// Согласно нашей структуре каталогов xpt лежит в sandbox/etc/xpt.
-	sandbox, _ := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", ".."))
-
-	// Настраиваем cache-директорию.
+	sandbox, _ := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", "..")) // xpt лежит в sandbox/etc/xpt
 	cache := filepath.Join(filepath.VolumeName(sandbox), string(filepath.Separator), "xptcache")
-	if _, err := os.Stat(cache); os.IsNotExist(err) {
-		os.MkdirAll(cache, os.ModePerm)
-	}
+
+	os.MkdirAll(cache, os.ModePerm)
+	os.MkdirAll(filepath.Join(sandbox, "var", "xpt", "installed"), os.ModePerm)
 
 	//
 	// Обрабатываем аргументы командной строки.
@@ -90,7 +87,6 @@ func update(sandbox string) int {
 		}
 	}
 
-	os.MkdirAll(filepath.Join(sandbox, "var", "xpt"), os.ModePerm)
 	f, e := os.Create(filepath.Join(sandbox, "var", "xpt", "update.txt"))
 	if e != nil {
 		panic(e)
@@ -160,6 +156,19 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	}
 
 	fmt.Printf("|move")
+	installedTxtFilename := filepath.Join(sandbox, "var", "xpt", "installed", name+".txt")
+	dat, err := ioutil.ReadFile(installedTxtFilename)
+	if err == nil {
+		for _, line := range strings.Split(string(dat), "\n") {
+			if line == "" {
+				continue
+			}
+			os.Remove(filepath.Join(sandbox, line))
+		}
+		os.Remove(installedTxtFilename)
+	}
+	installed, _ := os.Create(installedTxtFilename)
+	defer installed.Close()
 	for _, file := range files {
 		if strings.HasPrefix(file, cachedUnzippedContent) {
 			fi, _ := os.Stat(file)
@@ -176,9 +185,11 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 				if err != nil {
 					log.Fatal(err)
 				}
+				installed.WriteString(rel + "\n")
 			}
 		}
 	}
+	installed.Sync()
 	fmt.Printf("\n")
 }
 
