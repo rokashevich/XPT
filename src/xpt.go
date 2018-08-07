@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"os/user"
@@ -17,7 +18,6 @@ import (
 func main() {
 	// Согласно нашей структуре каталогов xpt лежит в sandbox/etc/xpt.
 	sandbox, _ := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", ".."))
-	fmt.Println("sandbox=" + sandbox)
 
 	// Настраиваем cache-директорию.
 	cache := setupCacheDirectory(sandbox)
@@ -49,7 +49,6 @@ func setupCacheDirectory(sandbox string) string {
 
 func update(sandbox string) int {
 	sourcesTxt := filepath.Join(sandbox, "etc", "xpt", "sources.txt")
-	fmt.Println("sourcesTxt=" + sourcesTxt)
 	dat, err := ioutil.ReadFile(sourcesTxt)
 	if err != nil {
 		fmt.Println("*** Error: sources.txt not found: " + sourcesTxt)
@@ -80,14 +79,12 @@ func update(sandbox string) int {
 		}
 		return updateTxtContentPart
 	}
-	fmt.Println("--- read sources.txt")
 	for _, line := range strings.Split(string(dat), "\n") {
 		line = stripCtlAndExtFromUTF8(line)
 		if strings.HasPrefix(line, "repo ") {
 			// Удаляем двойные пробелы, т.к. строка может быть отформатирована разным кол-вом пробелов для наглядности sources.txt.
 			re := regexp.MustCompile(`[\s\p{Zs}]{2,}`)
 			line = re.ReplaceAllString(line, " ")
-			fmt.Println("--- " + line)
 			words := strings.Split(line, " ") // Массив вида [repo http://url tag1 tag2].
 			url := words[1]
 			tags := words[2:]
@@ -99,7 +96,6 @@ func update(sandbox string) int {
 				}
 			}
 		}
-		fmt.Println("--- updateTxtContent=" + updateTxtContent)
 	}
 
 	os.MkdirAll(filepath.Join(sandbox, "var", "xpt"), os.ModePerm)
@@ -124,8 +120,6 @@ func install(sandbox string, cache string) int {
 			names = append(names, arg)
 		}
 	}
-	fmt.Printf("--- names: %v\n", names)
-	fmt.Printf("--- tag: %s\n", tag)
 
 	var db [][]string // Считаем из update.txt в виде [[tag1 package1 url1], [tag2 package2 url2]].
 	updateTxt := filepath.Join(sandbox, "var", "xpt", "update.txt")
@@ -148,7 +142,7 @@ func install(sandbox string, cache string) int {
 }
 
 func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
-	fmt.Println("--- installOne: " + name)
+	fmt.Printf("%s", name)
 	var urls []string
 	for _, check := range db {
 		if check[0] == tag && check[1] == name {
@@ -162,9 +156,8 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	cached_file_name := strings.Replace(urls[0], "http://", "", -1)
 	cached_file_name = strings.Replace(cached_file_name, "/", "~", -1)
 	cached_file_name = filepath.Join(cache, cached_file_name)
-	fmt.Println(urls[0])
-	fmt.Println(cached_file_name)
 	_ = downloadUrl(urls[0], cached_file_name)
+	fmt.Printf("\n")
 }
 
 type xptPackage struct {
@@ -207,12 +200,11 @@ func readUrl(url string) (string, error) {
 
 //https://golangcode.com/download-a-file-with-progress/
 func downloadUrl(url string, filepath string) error {
-	fmt.Println("--- downloading to " + filepath)
 	// Create the file, but give it a tmp file extension, this means we won't overwrite a
 	// file until it's downloaded, but we'll remove the tmp extension once downloaded.
 	out, err := os.Create(filepath)
 	if err != nil {
-		fmt.Println("--- error creating " + filepath)
+		fmt.Println("*** error creating " + filepath)
 		return err
 	}
 	defer out.Close()
@@ -225,16 +217,15 @@ func downloadUrl(url string, filepath string) error {
 	defer resp.Body.Close()
 
 	// Create our progress reporter and pass it to be used alongside our writer
-	counter := &WriteCounter{}
+	counter := &WriteCounter{0, 0}
 	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
 	//_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
 	}
 
-	// The progress use the same line so print a new line once it's finished downloading
-	//fmt.Print("\n")
-
+	e := math.Floor(math.Log(float64(counter.Total)) / math.Log(1024))
+	fmt.Printf("%.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
 	return nil
 }
 
@@ -242,12 +233,35 @@ func downloadUrl(url string, filepath string) error {
 // interface and we can pass this into io.TeeReader() which will report progress on each
 // write cycle.
 type WriteCounter struct {
-	Total uint64
+	Total    uint64
+	Previous uint64
 }
 
 func (wc *WriteCounter) Write(p []byte) (int, error) {
 	n := len(p)
 	wc.Total += uint64(n)
-	fmt.Printf(".")
+	for {
+		var scale uint64 = 10000                            // Начальный шаг 10КБ: 0 - 100КБ
+		if wc.Previous >= 100000 && wc.Previous < 1000000 { // Шаг 100КБ: 100КБ - 1МБ
+			scale = 100000
+		} else if wc.Previous >= 1000000 && wc.Previous < 10000000 { // Шаг 1МБ: 1МБ - 10МБ
+			scale = 1000000
+		} else if wc.Previous >= 10000000 && wc.Previous < 100000000 { // Шаг 10МБ: 10МБ - 100МБ
+			scale = 10000000
+		} else if wc.Previous >= 100000000 && wc.Previous < 1000000000 { // Шаг 100МБ: 100МБ - 1ГБ
+			scale = 100000000
+		} else if wc.Previous >= 1000000000 { // Шаг 1Гб: 1Гб и больше
+			scale = 1000000000
+		}
+		wc.Previous += scale
+		if wc.Previous < wc.Total {
+			//fmt.Printf("scle=%d, prev=%d tot=%d .\n", scale, wc.Previous, wc.Total)
+			fmt.Printf(".")
+		} else {
+			wc.Previous -= scale
+			//fmt.Printf("scle=%d, prev=%d tot=%d break\n", scale, wc.Previous, wc.Total)
+			break
+		}
+	}
 	return n, nil
 }
