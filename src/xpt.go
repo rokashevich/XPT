@@ -159,7 +159,6 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	_ = downloadUrl(urls[0], cachedZip)
 
 	fmt.Printf("|unzip")
-	os.RemoveAll(cachedUnzipped)
 	files, err := Unzip(cachedZip, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
@@ -203,6 +202,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		}
 	}
 	installedFile.Sync()
+	os.RemoveAll(cachedUnzipped)
 	fmt.Printf("\n")
 }
 
