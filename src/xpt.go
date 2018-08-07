@@ -131,6 +131,7 @@ func install(sandbox string, cache string) int {
 
 func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
 	fmt.Printf("%s", name)
+
 	var urls []string
 	for _, check := range db {
 		if check[0] == tag && check[1] == name {
@@ -146,29 +147,41 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	cachedZip = filepath.Join(cache, cachedZip)
 	cachedUnzipped := strings.Replace(cachedZip, ".zip", "", -1)
 	cachedUnzippedContent := filepath.Join(cachedUnzipped, "CONTENT")
+	nameWithVersion := strings.Replace(filepath.Base(urls[0]), ".zip", "", -1)
+	installedFilename := filepath.Join(sandbox, "var", "xpt", "installed", nameWithVersion+".txt")
+
+	if _, err := os.Stat(installedFilename); err == nil {
+		fmt.Printf(" is already installed\n")
+		return
+	}
+
+	// Если пакет уже установлен то и не надо его устанавливать
 	_ = downloadUrl(urls[0], cachedZip)
 
 	fmt.Printf("|unzip")
-	// TODO Удалить предыдущую директорию установки если есть
+	os.RemoveAll(cachedUnzipped)
 	files, err := Unzip(cachedZip, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Printf("|move")
-	installedTxtFilename := filepath.Join(sandbox, "var", "xpt", "installed", name+".txt")
-	dat, err := ioutil.ReadFile(installedTxtFilename)
-	if err == nil {
-		for _, line := range strings.Split(string(dat), "\n") {
-			if line == "" {
-				continue
+	installedGlob, _ := filepath.Glob(filepath.Join(sandbox, "var", "xpt", "installed", name+"_*.txt"))
+	for _, installed := range installedGlob {
+		dat, err := ioutil.ReadFile(installed)
+		if err == nil {
+			for _, line := range strings.Split(string(dat), "\n") {
+				if line == "" {
+					continue
+				}
+				os.Remove(filepath.Join(sandbox, line))
 			}
-			os.Remove(filepath.Join(sandbox, line))
+			os.Remove(installed)
 		}
-		os.Remove(installedTxtFilename)
 	}
-	installed, _ := os.Create(installedTxtFilename)
-	defer installed.Close()
+
+	installedFile, _ := os.Create(installedFilename)
+	defer installedFile.Close()
 	for _, file := range files {
 		if strings.HasPrefix(file, cachedUnzippedContent) {
 			fi, _ := os.Stat(file)
@@ -185,11 +198,11 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 				if err != nil {
 					log.Fatal(err)
 				}
-				installed.WriteString(rel + "\n")
+				installedFile.WriteString(rel + "\n")
 			}
 		}
 	}
-	installed.Sync()
+	installedFile.Sync()
 	fmt.Printf("\n")
 }
 
