@@ -145,16 +145,16 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		fmt.Printf("*** Error: More than one url for a package: %v\n", urls)
 		os.Exit(1)
 	}
-	cached_file_name := strings.Replace(urls[0], "http://", "", -1)
-	cached_file_name = strings.Replace(cached_file_name, "/", "~", -1)
-	cached_file_name = filepath.Join(cache, cached_file_name)
-	cachedUnzipped := strings.Replace(cached_file_name, ".zip", "", -1)
+	cachedZip := strings.Replace(urls[0], "http://", "", -1)
+	cachedZip = strings.Replace(cachedZip, "/", "~", -1)
+	cachedZip = filepath.Join(cache, cachedZip)
+	cachedUnzipped := strings.Replace(cachedZip, ".zip", "", -1)
 	cachedUnzippedContent := filepath.Join(cachedUnzipped, "CONTENT")
-	_ = downloadUrl(urls[0], cached_file_name)
+	_ = downloadUrl(urls[0], cachedZip)
 
 	fmt.Printf("|unzip")
 	// TODO Удалить предыдущую директорию установки если есть
-	files, err := Unzip(cached_file_name, cachedUnzipped)
+	files, err := Unzip(cachedZip, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,15 +179,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 			}
 		}
 	}
-
 	fmt.Printf("\n")
-}
-
-type xptPackage struct {
-	name string
-	tag  string
-	url  string
-	size string
 }
 
 func usage() int {
