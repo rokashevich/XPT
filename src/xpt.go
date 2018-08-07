@@ -301,11 +301,9 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		}
 		wc.Previous += scale
 		if wc.Previous < wc.Total {
-			//fmt.Printf("scle=%d, prev=%d tot=%d .\n", scale, wc.Previous, wc.Total)
 			fmt.Printf(".")
 		} else {
 			wc.Previous -= scale
-			//fmt.Printf("scle=%d, prev=%d tot=%d break\n", scale, wc.Previous, wc.Total)
 			break
 		}
 	}
