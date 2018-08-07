@@ -202,8 +202,20 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		}
 	}
 	installedFile.Sync()
+
+	dat, e := ioutil.ReadFile(filepath.Join(cachedUnzipped, "control.txt"))
 	os.RemoveAll(cachedUnzipped)
 	fmt.Printf("\n")
+	if e == nil {
+		for _, line := range strings.Split(string(dat), "\n") {
+			if strings.HasPrefix(line, "Depends:") {
+				dependantNames := strings.Split(strings.TrimSpace(strings.SplitN(line, ":", 2)[1]), " ")
+				for _, dependantName := range dependantNames {
+					installOne(sandbox, cache, dependantName, tag, db)
+				}
+			}
+		}
+	}
 }
 
 func usage() int {
