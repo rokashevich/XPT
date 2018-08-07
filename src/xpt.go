@@ -10,7 +10,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -22,7 +21,10 @@ func main() {
 	sandbox, _ := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", ".."))
 
 	// Настраиваем cache-директорию.
-	cache := setupCacheDirectory(sandbox)
+	cache := filepath.Join(filepath.VolumeName(sandbox), string(filepath.Separator), "xptcache")
+	if _, err := os.Stat(cache); os.IsNotExist(err) {
+		os.MkdirAll(cache, os.ModePerm)
+	}
 
 	//
 	// Обрабатываем аргументы командной строки.
@@ -35,18 +37,6 @@ func main() {
 	} else {
 		os.Exit(usage())
 	}
-}
-
-func setupCacheDirectory(sandbox string) string {
-	cache := os.Getenv("XPTCACHE")
-	if cache == "" { // Если XPTCACHE не задан, то используем домашний каталог.
-		u, _ := user.Current()
-		cache = filepath.Join(u.HomeDir, "xptcache")
-	}
-	if _, err := os.Stat(cache); os.IsNotExist(err) {
-		os.MkdirAll(cache, os.ModePerm)
-	}
-	return cache
 }
 
 func update(sandbox string) int {
@@ -158,15 +148,37 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	cached_file_name := strings.Replace(urls[0], "http://", "", -1)
 	cached_file_name = strings.Replace(cached_file_name, "/", "~", -1)
 	cached_file_name = filepath.Join(cache, cached_file_name)
+	cachedUnzipped := strings.Replace(cached_file_name, ".zip", "", -1)
+	cachedUnzippedContent := filepath.Join(cachedUnzipped, "CONTENT")
 	_ = downloadUrl(urls[0], cached_file_name)
 
 	fmt.Printf("|unzip")
 	// TODO Удалить предыдущую директорию установки если есть
-	_, err := Unzip(cached_file_name, strings.Replace(cached_file_name, ".zip", "", -1))
+	files, err := Unzip(cached_file_name, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("|")
+
+	fmt.Printf("|move")
+	for _, file := range files {
+		if strings.HasPrefix(file, cachedUnzippedContent) {
+			fi, _ := os.Stat(file)
+			switch mode := fi.Mode(); {
+			case mode.IsRegular():
+				rel, _ := filepath.Rel(cachedUnzippedContent, file)
+				dest := filepath.Join(sandbox, rel)
+				if _, err := os.Stat(dest); err == nil {
+					fmt.Printf("\n!!! Overwrite %s", dest)
+					os.Remove(dest)
+				}
+				os.MkdirAll(filepath.Dir(dest), os.ModePerm)
+				err = os.Rename(file, dest)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
+	}
 
 	fmt.Printf("\n")
 }
