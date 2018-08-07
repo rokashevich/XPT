@@ -1,10 +1,12 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -157,6 +159,14 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	cached_file_name = strings.Replace(cached_file_name, "/", "~", -1)
 	cached_file_name = filepath.Join(cache, cached_file_name)
 	_ = downloadUrl(urls[0], cached_file_name)
+
+	fmt.Printf("|unzip")
+	_, err := Unzip(cached_file_name, strings.Replace(cached_file_name, ".zip", "", -1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("|")
+
 	fmt.Printf("\n")
 }
 
@@ -200,32 +210,40 @@ func readUrl(url string) (string, error) {
 
 //https://golangcode.com/download-a-file-with-progress/
 func downloadUrl(url string, filepath string) error {
-	// Create the file, but give it a tmp file extension, this means we won't overwrite a
-	// file until it's downloaded, but we'll remove the tmp extension once downloaded.
-	out, err := os.Create(filepath)
-	if err != nil {
-		fmt.Println("*** error creating " + filepath)
-		return err
-	}
-	defer out.Close()
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		out, err := os.Create(filepath + ".tmp")
+		if err != nil {
+			fmt.Println("*** error creating " + filepath)
+			return err
+		}
 
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+		// Get the data
+		resp, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
 
-	// Create our progress reporter and pass it to be used alongside our writer
-	counter := &WriteCounter{0, 0}
-	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
-	//_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
+		// Create our progress reporter and pass it to be used alongside our writer
+		counter := &WriteCounter{0, 0}
+		_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
+		if err != nil {
+			return err
+		}
+		out.Close()
+
+		err = os.Rename(filepath+".tmp", filepath)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+
+		e := math.Floor(math.Log(float64(counter.Total)) / math.Log(1024))
+		fmt.Printf("%.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
+	} else {
+		fmt.Printf(" is cached")
 	}
 
-	e := math.Floor(math.Log(float64(counter.Total)) / math.Log(1024))
-	fmt.Printf("%.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
 	return nil
 }
 
@@ -264,4 +282,57 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+func Unzip(src string, dest string) ([]string, error) {
+
+	var filenames []string
+
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return filenames, err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+
+		rc, err := f.Open()
+		if err != nil {
+			return filenames, err
+		}
+		defer rc.Close()
+
+		// Store filename/path for returning and using later on
+		fpath := filepath.Join(dest, f.Name)
+		filenames = append(filenames, fpath)
+
+		if f.FileInfo().IsDir() {
+
+			// Make Folder
+			os.MkdirAll(fpath, os.ModePerm)
+
+		} else {
+
+			// Make File
+			if err = os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+				return filenames, err
+			}
+
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				return filenames, err
+			}
+
+			_, err = io.Copy(outFile, rc)
+
+			// Close the file without defer to close before next iteration of loop
+			outFile.Close()
+
+			if err != nil {
+				return filenames, err
+			}
+
+		}
+	}
+	return filenames, nil
 }
