@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func main() {
 }
 
 func update(sandbox string) int {
-	fmt.Print("Update")
+	fmt.Print("Update ")
 	sourcesTxt := filepath.Join(sandbox, "etc", "xpt", "sources.txt")
 	dat, err := ioutil.ReadFile(sourcesTxt)
 	if err != nil {
@@ -61,7 +62,8 @@ func update(sandbox string) int {
 				os.Exit(1)
 			}
 			packageURL := repoURL + "/" + packageFileName
-			packageName := strings.SplitN(packageFileName, "_", 2)[0]
+			splits := strings.Split(packageFileName, "_")
+			packageName := strings.Join(splits[:len(splits)-1], "_")
 			updateTxtContent += tag + " " + packageName + " " + packageURL + "\n"
 		}
 		fmt.Print(".")
@@ -128,7 +130,7 @@ func install(sandbox string, cache string) int {
 }
 
 func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
-	fmt.Printf("Install %s", name)
+	fmt.Printf("Install %s ", name)
 
 	var urls []string
 	for _, check := range db {
@@ -137,32 +139,35 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		}
 	}
 	if len(urls) > 1 {
-		fmt.Printf("*** Error: More than one url for a package: %v\n", urls)
+		fmt.Printf("*** ERROR: MORE THAN ONE PACKAGE IN SOURCES.TXT:\n%v\n", urls)
+		os.Exit(1)
+	} else if len(urls) == 0 {
+		fmt.Println("*** ERROR: NOT FOUND IN SOURCES.TXT")
 		os.Exit(1)
 	}
+	nameWithVersion := strings.Replace(filepath.Base(urls[0]), ".zip", "", -1)
 	cachedZip := strings.Replace(urls[0], "http://", "", -1)
 	cachedZip = strings.Replace(cachedZip, "/", "~", -1)
 	cachedZip = filepath.Join(cache, cachedZip)
-	cachedUnzipped := strings.Replace(cachedZip, ".zip", "", -1)
+	cachedUnzipped := filepath.Join(cache, randomString(64))
 	cachedUnzippedContent := filepath.Join(cachedUnzipped, "CONTENT")
-	nameWithVersion := strings.Replace(filepath.Base(urls[0]), ".zip", "", -1)
 	installedFilename := filepath.Join(sandbox, "var", "xpt", "installed", nameWithVersion+".txt")
 
 	if _, err := os.Stat(installedFilename); err == nil {
-		fmt.Printf(" is already installed\n")
+		fmt.Println("already installed")
 		return
 	}
 
 	// Если пакет уже установлен то и не надо его устанавливать.
 	_ = downloadURL(urls[0], cachedZip)
 
-	fmt.Printf("|unzip")
+	fmt.Printf(" unzip")
 	files, err := unzip(cachedZip, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("|move")
+	fmt.Printf(" move")
 	installedGlob, _ := filepath.Glob(filepath.Join(sandbox, "var", "xpt", "installed", name+"_*.txt"))
 	for _, installed := range installedGlob {
 		dat, err := ioutil.ReadFile(installed)
@@ -203,7 +208,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 
 	dat, e := ioutil.ReadFile(filepath.Join(cachedUnzipped, "control.txt"))
 	os.RemoveAll(cachedUnzipped)
-	fmt.Printf("\n")
+	fmt.Println(" success")
 	if e == nil {
 		for _, line := range strings.Split(string(dat), "\n") {
 			if strings.HasPrefix(line, "Depends:") {
@@ -277,9 +282,9 @@ func downloadURL(url string, filepath string) error {
 		}
 
 		e := math.Floor(math.Log(float64(counter.Total)) / math.Log(1024))
-		fmt.Printf("%.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
+		fmt.Printf(" %.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
 	} else {
-		fmt.Printf(" is cached")
+		fmt.Printf("is cached")
 	}
 
 	return nil
@@ -371,4 +376,12 @@ func unzip(src string, dest string) ([]string, error) {
 		}
 	}
 	return filenames, nil
+}
+
+func randomString(len int) string {
+	bytes := make([]byte, len)
+	for i := 0; i < len; i++ {
+		bytes[i] = byte(97 + rand.Intn(25)) //a=97 and z = 97+25
+	}
+	return string(bytes)
 }
