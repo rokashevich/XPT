@@ -34,36 +34,38 @@ func main() {
 }
 
 func update(sandbox string) int {
+	fmt.Print("Update")
 	sourcesTxt := filepath.Join(sandbox, "etc", "xpt", "sources.txt")
 	dat, err := ioutil.ReadFile(sourcesTxt)
 	if err != nil {
-		fmt.Println("*** Error: sources.txt not found: " + sourcesTxt)
+		log.Fatal(err)
 		os.Exit(1)
 	}
-
-	updateTxtContent := ""
-
+	updateTxtContent := "" // Сюда считаем список всех доступных пакетов во всех тэгах и url-ы к ним.
 	updateOne := func(url string, tag string) string {
 		repoURL := url
 		if tag != "notag" {
 			repoURL += "/" + tag
 		}
 		packagesTxtURL := repoURL + "/packages.txt"
-		packagesTxt, err := readUrl(packagesTxtURL)
-		if err != nil {
-			fmt.Println("!!! Warning: ")
-		}
-		updateTxtContentPart := ""
+		packagesTxt := readURL(packagesTxtURL)
+		updateTxtContent := ""
 		for _, line := range strings.Split(packagesTxt, "\n") {
-			packageFileName := stripCtlAndExtFromUTF8(line)
+			packageFileName := strings.TrimSpace(stripCtlAndExtFromUTF8(line))
 			if line == "" {
 				continue
 			}
+			// Простейшая проверка правильности данных в packages.txt.
+			if strings.Contains(packageFileName, " ") == true && !strings.HasSuffix(packageFileName, ".zip") {
+				fmt.Printf("\n!!! Skip update database due to read failure: %s", packagesTxtURL)
+				os.Exit(1)
+			}
 			packageURL := repoURL + "/" + packageFileName
 			packageName := strings.SplitN(packageFileName, "_", 2)[0]
-			updateTxtContentPart += tag + " " + packageName + " " + packageURL + "\n"
+			updateTxtContent += tag + " " + packageName + " " + packageURL + "\n"
 		}
-		return updateTxtContentPart
+		fmt.Print(".")
+		return updateTxtContent
 	}
 	for _, line := range strings.Split(string(dat), "\n") {
 		line = stripCtlAndExtFromUTF8(line)
@@ -83,14 +85,14 @@ func update(sandbox string) int {
 			}
 		}
 	}
-
-	f, e := os.Create(filepath.Join(sandbox, "var", "xpt", "update.txt"))
-	if e != nil {
-		panic(e)
+	f, err := os.Create(filepath.Join(sandbox, "var", "xpt", "update.txt"))
+	if err != nil {
+		log.Fatal(err)
 	}
 	defer f.Close()
 	f.WriteString(updateTxtContent)
 	f.Sync()
+	fmt.Println("")
 	return 0
 }
 
@@ -110,8 +112,7 @@ func install(sandbox string, cache string) int {
 	updateTxt := filepath.Join(sandbox, "var", "xpt", "update.txt")
 	dat, err := ioutil.ReadFile(updateTxt)
 	if err != nil {
-		fmt.Println("*** Error: update.txt not found: " + updateTxt)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 	for _, line := range strings.Split(string(dat), "\n") {
 		splits := strings.Split(line, " ")
@@ -127,7 +128,7 @@ func install(sandbox string, cache string) int {
 }
 
 func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
-	fmt.Printf("%s", name)
+	fmt.Printf("Install %s", name)
 
 	var urls []string
 	for _, check := range db {
@@ -153,10 +154,10 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	}
 
 	// Если пакет уже установлен то и не надо его устанавливать.
-	_ = downloadUrl(urls[0], cachedZip)
+	_ = downloadURL(urls[0], cachedZip)
 
 	fmt.Printf("|unzip")
-	files, err := Unzip(cachedZip, cachedUnzipped)
+	files, err := unzip(cachedZip, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -216,7 +217,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 }
 
 func usage() int {
-	fmt.Println("xpt ver. 0.0.0 (" + runtime.Version() + ")")
+	fmt.Println("xpt " + os.Getenv("XPTVERSION") + " (" + runtime.Version() + ")")
 	fmt.Println("usage: xpt install package1 package2 @ tag")
 	return 1
 }
@@ -231,22 +232,22 @@ func stripCtlAndExtFromUTF8(str string) string {
 	}, str)
 }
 
-func readUrl(url string) (string, error) {
+func readURL(url string) string {
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", err
+		log.Fatal(err)
 	}
 	defer resp.Body.Close()
 	buf := bytes.NewBuffer(nil)
 	_, err = io.Copy(buf, resp.Body)
 	if err != nil {
-		return "", err
+		log.Fatal(err)
 	}
-	return buf.String(), nil
+	return buf.String()
 }
 
 // https://golangcode.com/download-a-file-with-progress
-func downloadUrl(url string, filepath string) error {
+func downloadURL(url string, filepath string) error {
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
 		out, err := os.Create(filepath + ".tmp")
 		if err != nil {
@@ -319,7 +320,7 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func Unzip(src string, dest string) ([]string, error) {
+func unzip(src string, dest string) ([]string, error) {
 
 	var filenames []string
 
