@@ -23,10 +23,7 @@ func main() {
 	os.MkdirAll(cache, os.ModePerm)
 	os.MkdirAll(filepath.Join(sandbox, "var", "xpt", "installed"), os.ModePerm)
 
-	//
 	// Обрабатываем аргументы командной строки.
-	//
-
 	if len(os.Args) == 2 && os.Args[1] == "update" {
 		os.Exit(update(sandbox))
 	} else if len(os.Args) > 2 && os.Args[1] == "install" {
@@ -155,7 +152,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		return
 	}
 
-	// Если пакет уже установлен то и не надо его устанавливать
+	// Если пакет уже установлен то и не надо его устанавливать.
 	_ = downloadUrl(urls[0], cachedZip)
 
 	fmt.Printf("|unzip")
@@ -248,7 +245,7 @@ func readUrl(url string) (string, error) {
 	return buf.String(), nil
 }
 
-//https://golangcode.com/download-a-file-with-progress/
+// https://golangcode.com/download-a-file-with-progress
 func downloadUrl(url string, filepath string) error {
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
 		out, err := os.Create(filepath + ".tmp")
