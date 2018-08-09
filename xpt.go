@@ -122,7 +122,6 @@ func install(sandbox string, cache string) int {
 			db = append(db, splits)
 		}
 	}
-
 	for _, name := range names {
 		installOne(sandbox, cache, name, tag, db)
 	}
@@ -130,8 +129,7 @@ func install(sandbox string, cache string) int {
 }
 
 func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
-	fmt.Printf("Install %s ", name)
-
+	fmt.Printf("%-30s ", name)
 	var urls []string
 	for _, check := range db {
 		if check[0] == tag && check[1] == name {
@@ -154,20 +152,18 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	installedFilename := filepath.Join(sandbox, "var", "xpt", "installed", nameWithVersion+".txt")
 
 	if _, err := os.Stat(installedFilename); err == nil {
-		fmt.Println("already installed")
+		fmt.Println("is already installed")
 		return
 	}
 
 	// Если пакет уже установлен то и не надо его устанавливать.
 	_ = downloadURL(urls[0], cachedZip)
 
-	fmt.Printf(" unzip")
 	files, err := unzip(cachedZip, cachedUnzipped)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf(" move")
 	installedGlob, _ := filepath.Glob(filepath.Join(sandbox, "var", "xpt", "installed", name+"_*.txt"))
 	for _, installed := range installedGlob {
 		dat, err := ioutil.ReadFile(installed)
@@ -208,7 +204,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 
 	dat, e := ioutil.ReadFile(filepath.Join(cachedUnzipped, "control.txt"))
 	os.RemoveAll(cachedUnzipped)
-	fmt.Println(" success")
+	fmt.Printf("\n")
 	if e == nil {
 		for _, line := range strings.Split(string(dat), "\n") {
 			if strings.HasPrefix(line, "Depends:") {
@@ -282,9 +278,9 @@ func downloadURL(url string, filepath string) error {
 		}
 
 		e := math.Floor(math.Log(float64(counter.Total)) / math.Log(1024))
-		fmt.Printf(" %.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
+		fmt.Printf(". %.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
 	} else {
-		fmt.Printf("is cached")
+		fmt.Printf("is installed from cache")
 	}
 
 	return nil
@@ -302,10 +298,8 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 	n := len(p)
 	wc.Total += uint64(n)
 	for {
-		var scale uint64 = 10000                            // Начальный шаг 10КБ: 0 - 100КБ
-		if wc.Previous >= 100000 && wc.Previous < 1000000 { // Шаг 100КБ: 100КБ - 1МБ
-			scale = 100000
-		} else if wc.Previous >= 1000000 && wc.Previous < 10000000 { // Шаг 1МБ: 1МБ - 10МБ
+		var scale uint64 = 100000                             // Начальный шаг 10КБ: 0 - 1МБ
+		if wc.Previous >= 1000000 && wc.Previous < 10000000 { // Шаг 1МБ: 1МБ - 10МБ
 			scale = 1000000
 		} else if wc.Previous >= 10000000 && wc.Previous < 100000000 { // Шаг 10МБ: 10МБ - 100МБ
 			scale = 10000000
