@@ -35,7 +35,7 @@ func main() {
 }
 
 func update(sandbox string) int {
-	fmt.Print("Update ")
+	fmt.Print("Update                        ")
 	sourcesTxt := filepath.Join(sandbox, "etc", "xpt", "sources.txt")
 	dat, err := ioutil.ReadFile(sourcesTxt)
 	if err != nil {
