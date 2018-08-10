@@ -35,7 +35,10 @@ func main() {
 }
 
 func update(sandbox string) int {
-	fmt.Print("Update                        ")
+	title := fmt.Sprintf("%-26s", "Update")
+	fmt.Printf(title)
+	var downloadedSize uint64
+	printedLen := len(title)
 	sourcesTxt := filepath.Join(sandbox, "etc", "xpt", "sources.txt")
 	dat, err := ioutil.ReadFile(sourcesTxt)
 	if err != nil {
@@ -67,6 +70,8 @@ func update(sandbox string) int {
 			updateTxtContent += tag + " " + packageName + " " + packageURL + "\n"
 		}
 		fmt.Print(".")
+		printedLen++
+		downloadedSize += uint64(len(packagesTxt))
 		return updateTxtContent
 	}
 	for _, line := range strings.Split(string(dat), "\n") {
@@ -94,7 +99,7 @@ func update(sandbox string) int {
 	defer f.Close()
 	f.WriteString(updateTxtContent)
 	f.Sync()
-	fmt.Println("")
+	printPaddedSize(printedLen, downloadedSize)
 	return 0
 }
 
@@ -129,7 +134,11 @@ func install(sandbox string, cache string) int {
 }
 
 func installOne(sandbox string, cache string, name string, tag string, db [][]string) {
-	fmt.Printf("%-30s ", name)
+	title := fmt.Sprintf("%-26s", name)[:26]
+	fmt.Print(title)
+	printedLen := len(title)
+	var downloadedSize uint64
+
 	var urls []string
 	for _, check := range db {
 		if check[0] == tag && check[1] == name {
@@ -137,10 +146,10 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 		}
 	}
 	if len(urls) > 1 {
-		fmt.Printf("*** ERROR: MORE THAN ONE PACKAGE IN SOURCES.TXT:\n%v\n", urls)
+		fmt.Println("\n*** ERROR: MORE THAN ONE PACKAGE IN SOURCES.TXT")
 		os.Exit(1)
 	} else if len(urls) == 0 {
-		fmt.Println("*** ERROR: NOT FOUND IN SOURCES.TXT")
+		fmt.Println("\n*** ERROR: NOT FOUND IN SOURCES.TXT")
 		os.Exit(1)
 	}
 	nameWithVersion := strings.Replace(filepath.Base(urls[0]), ".zip", "", -1)
@@ -152,12 +161,20 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	installedFilename := filepath.Join(sandbox, "var", "xpt", "installed", nameWithVersion+".txt")
 
 	if _, err := os.Stat(installedFilename); err == nil {
-		fmt.Println("is already installed")
+		fmt.Println("already installed")
 		return
 	}
 
-	// Если пакет уже установлен то и не надо его устанавливать.
-	_ = downloadURL(urls[0], cachedZip)
+	if _, err := os.Stat(cachedZip); os.IsNotExist(err) {
+		var dotsLen int
+		downloadedSize, dotsLen, _ = downloadURL(urls[0], cachedZip)
+		// Если загружаемый файл меньше шага в downloadURL, то последний не нарисует ни одной точки,
+		// а надо чтобы хотя бы одна точка была.
+		fmt.Print(".")
+		printPaddedSize(printedLen+dotsLen+1, downloadedSize) // +1 добавляет длину добавленной точки.
+	} else {
+		fmt.Println("install from cache")
+	}
 
 	files, err := unzip(cachedZip, cachedUnzipped)
 	if err != nil {
@@ -188,7 +205,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 				rel, _ := filepath.Rel(cachedUnzippedContent, file)
 				dest := filepath.Join(sandbox, rel)
 				if _, err := os.Stat(dest); err == nil {
-					fmt.Printf("\n!!! Overwrite %s", dest)
+					fmt.Printf("!!! Overwrite %s\n", dest)
 					os.Remove(dest)
 				}
 				os.MkdirAll(filepath.Dir(dest), os.ModePerm)
@@ -204,7 +221,6 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 
 	dat, e := ioutil.ReadFile(filepath.Join(cachedUnzipped, "control.txt"))
 	os.RemoveAll(cachedUnzipped)
-	fmt.Printf("\n")
 	if e == nil {
 		for _, line := range strings.Split(string(dat), "\n") {
 			if strings.HasPrefix(line, "Depends:") {
@@ -248,42 +264,36 @@ func readURL(url string) string {
 }
 
 // https://golangcode.com/download-a-file-with-progress
-func downloadURL(url string, filepath string) error {
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		out, err := os.Create(filepath + ".tmp")
-		if err != nil {
-			fmt.Println("*** error creating " + filepath)
-			return err
-		}
+func downloadURL(url string, filepath string) (uint64, int, error) {
 
-		// Get the data
-		resp, err := http.Get(url)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-
-		// Create our progress reporter and pass it to be used alongside our writer
-		counter := &WriteCounter{0, 0}
-		_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
-		if err != nil {
-			return err
-		}
-		out.Close()
-
-		err = os.Rename(filepath+".tmp", filepath)
-		if err != nil {
-			log.Fatal(err)
-			return err
-		}
-
-		e := math.Floor(math.Log(float64(counter.Total)) / math.Log(1024))
-		fmt.Printf(". %.1f%cB", float64(counter.Total)/math.Pow(1024, e), " KMGTP"[int(e)])
-	} else {
-		fmt.Printf("is installed from cache")
+	out, err := os.Create(filepath + ".tmp")
+	if err != nil {
+		fmt.Println("*** error creating " + filepath)
+		return 0, 0, err
 	}
 
-	return nil
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+
+	// Create our progress reporter and pass it to be used alongside our writer
+	counter := &WriteCounter{}
+	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
+	if err != nil {
+		return 0, 0, err
+	}
+	out.Close()
+
+	err = os.Rename(filepath+".tmp", filepath)
+	if err != nil {
+		log.Fatal(err)
+		return 0, 0, err
+	}
+
+	return counter.Total, counter.Length, nil
 }
 
 // WriteCounter counts the number of bytes written to it. It implements to the io.Writer
@@ -292,6 +302,7 @@ func downloadURL(url string, filepath string) error {
 type WriteCounter struct {
 	Total    uint64
 	Previous uint64
+	Length   int
 }
 
 func (wc *WriteCounter) Write(p []byte) (int, error) {
@@ -311,12 +322,27 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		wc.Previous += scale
 		if wc.Previous < wc.Total {
 			fmt.Printf(".")
+			wc.Length++
 		} else {
 			wc.Previous -= scale
 			break
 		}
 	}
 	return n, nil
+}
+
+func printPaddedSize(printedLen int, downloadedSize uint64) {
+	size := math.Round(float64(downloadedSize) / 1024)
+	if size < 1 {
+		size = 1
+	}
+	sizeStr := fmt.Sprintf("%.0f KB", size)
+	padStr := ""
+	padLen := 79 - printedLen - len(sizeStr)
+	if padLen > 0 {
+		padStr = strings.Repeat(" ", padLen)
+	}
+	fmt.Printf("%s%s\n", padStr, sizeStr)
 }
 
 func unzip(src string, dest string) ([]string, error) {
