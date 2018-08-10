@@ -189,7 +189,12 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 				if line == "" {
 					continue
 				}
-				os.Remove(filepath.Join(sandbox, line))
+				file := filepath.Join(sandbox, line)
+				fi, _ := os.Stat(file)
+				switch mode := fi.Mode(); {
+				case mode.IsRegular():
+					os.Remove(file)
+				}
 			}
 			os.Remove(installed)
 		}
@@ -199,11 +204,12 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	defer installedFile.Close()
 	for _, file := range files {
 		if strings.HasPrefix(file, cachedUnzippedContent) {
+			rel, _ := filepath.Rel(cachedUnzippedContent, file)
+			installedFile.WriteString(rel + "\n")
+			dest := filepath.Join(sandbox, rel)
 			fi, _ := os.Stat(file)
 			switch mode := fi.Mode(); {
 			case mode.IsRegular():
-				rel, _ := filepath.Rel(cachedUnzippedContent, file)
-				dest := filepath.Join(sandbox, rel)
 				if _, err := os.Stat(dest); err == nil {
 					fmt.Printf("!!! Overwrite %s\n", dest)
 					os.Remove(dest)
@@ -213,7 +219,8 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 				if err != nil {
 					log.Fatal(err)
 				}
-				installedFile.WriteString(rel + "\n")
+			case mode.IsDir():
+				os.MkdirAll(dest, os.ModePerm)
 			}
 		}
 	}
