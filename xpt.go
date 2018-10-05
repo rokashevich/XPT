@@ -19,7 +19,11 @@ import (
 
 func main() {
 	sandbox, _ := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", "..")) // xpt лежит в sandbox/etc/xpt
-	cache := filepath.Join(filepath.VolumeName(sandbox), string(filepath.Separator), "xptcache")
+
+	cache := os.Getenv("XPTCACHE")
+	if len(cache) == 0 {
+		cache = filepath.Join(filepath.VolumeName(sandbox), string(filepath.Separator), "xptcache")
+	}
 
 	os.MkdirAll(cache, os.ModePerm)
 	os.MkdirAll(filepath.Join(sandbox, "var", "xpt", "installed"), os.ModePerm)
