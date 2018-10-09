@@ -184,7 +184,7 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	
 	installedGlob, _ := filepath.Glob(filepath.Join(sandbox, "var", "xpt", "installed", name+"_*.txt"))
 	for _, installed := range installedGlob {
 		dat, err := ioutil.ReadFile(installed)
@@ -206,26 +206,43 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 
 	installedFile, _ := os.Create(installedFilename)
 	defer installedFile.Close()
+
 	for _, file := range files {
 		if strings.HasPrefix(file, cachedUnzippedContent) {
 			rel, _ := filepath.Rel(cachedUnzippedContent, file)
-			installedFile.WriteString(rel + "\n")
-			dest := filepath.Join(sandbox, rel)
-			fi, _ := os.Stat(file)
-			switch mode := fi.Mode(); {
-			case mode.IsRegular():
-				if _, err := os.Stat(dest); err == nil {
-					fmt.Printf("!!! Overwrite %s\n", dest)
-					os.Remove(dest)
+			dst := filepath.Join(sandbox, rel)
+
+			os.MkdirAll(filepath.Dir(dst), os.ModePerm) // Родительскую папку создаём в любом случае
+
+			dst_fi, dst_err := os.Stat(dst)
+			if !os.IsNotExist(dst_err) {    // dest существует
+				if !dst_fi.Mode().IsDir() { // и это не директория
+					os.Remove(dst)          // - удаляем
+					fmt.Printf("!!! Overwrite %s\n", dst)
 				}
-				os.MkdirAll(filepath.Dir(dest), os.ModePerm)
-				err = os.Rename(file, dest)
+			}
+
+			src_fi, _ := os.Lstat(file)
+			if src_fi.Mode() & os.ModeSymlink != 0 {
+				if !os.IsNotExist(dst_err) {
+					os.Remove(dst)
+				}
+				err := os.Rename(file, dst)
 				if err != nil {
 					log.Fatal(err)
 				}
-			case mode.IsDir():
-				os.MkdirAll(dest, os.ModePerm)
+			} else if src_fi.Mode().IsDir() {
+				if os.IsNotExist(dst_err) {
+					os.MkdirAll(dst, os.ModePerm)
+				}
+			} else {
+				
+				err := os.Rename(file, dst)
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
+			installedFile.WriteString(rel + "\n")
 		}
 	}
 	installedFile.Sync()
@@ -378,7 +395,12 @@ func unzip(src string, dest string) ([]string, error) {
 		fpath := filepath.Join(dest, f.Name)
 		filenames = append(filenames, fpath)
 
-		if f.FileInfo().IsDir() {
+		if f.Mode()&os.ModeSymlink == os.ModeSymlink {
+			os.MkdirAll(filepath.Dir(fpath), os.ModePerm);
+			var link_dest strings.Builder
+			io.Copy(&link_dest, rc)
+			os.Symlink(link_dest.String(), fpath)
+		} else if f.FileInfo().IsDir() {
 
 			// Make Folder
 			os.MkdirAll(fpath, os.ModePerm)
@@ -394,16 +416,15 @@ func unzip(src string, dest string) ([]string, error) {
 			if err != nil {
 				return filenames, err
 			}
-
+	
 			_, err = io.Copy(outFile, rc)
-
+	
 			// Close the file without defer to close before next iteration of loop
 			outFile.Close()
-
+	
 			if err != nil {
 				return filenames, err
 			}
-
 		}
 	}
 	return filenames, nil
