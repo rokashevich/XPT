@@ -212,31 +212,21 @@ func installOne(sandbox string, cache string, name string, tag string, db [][]st
 			rel, _ := filepath.Rel(cachedUnzippedContent, file)
 			dst := filepath.Join(sandbox, rel)
 
-			os.MkdirAll(filepath.Dir(dst), os.ModePerm) // Родительскую папку создаём в любом случае
+			os.MkdirAll(filepath.Dir(dst), os.ModePerm) // родительскую папку создаём в любом случае
 
-			dst_fi, dst_err := os.Stat(dst)
-			if !os.IsNotExist(dst_err) {    // dest существует
-				if !dst_fi.Mode().IsDir() { // и это не директория
-					os.Remove(dst)          // - удаляем
-					fmt.Printf("!!! Overwrite %s\n", dst)
-				}
+			dst_fi, dst_err := os.Lstat(dst)
+			if !os.IsNotExist(dst_err) && !dst_fi.Mode().IsDir() {
+				os.Remove(dst)
+				fmt.Printf("!!! Overwrite %s\n", dst)
 			}
 
 			src_fi, _ := os.Lstat(file)
-			if src_fi.Mode() & os.ModeSymlink != 0 {
+			if src_fi.Mode().IsDir() {
+				os.MkdirAll(dst, os.ModePerm)
+			} else {
 				if !os.IsNotExist(dst_err) {
 					os.Remove(dst)
 				}
-				err := os.Rename(file, dst)
-				if err != nil {
-					log.Fatal(err)
-				}
-			} else if src_fi.Mode().IsDir() {
-				if os.IsNotExist(dst_err) {
-					os.MkdirAll(dst, os.ModePerm)
-				}
-			} else {
-				
 				err := os.Rename(file, dst)
 				if err != nil {
 					log.Fatal(err)
