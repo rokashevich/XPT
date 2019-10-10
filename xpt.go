@@ -81,7 +81,8 @@ func update(sandbox string) int {
 	for _, line := range strings.Split(string(dat), "\n") {
 		line = stripCtlAndExtFromUTF8(line)
 		if strings.HasPrefix(line, "repo ") {
-			// Удаляем двойные пробелы, т.к. строка может быть отформатирована разным кол-вом пробелов для наглядности sources.txt.
+			line := strings.TrimSpace(line)
+			// Удаляем двойные пробелы/табы, т.к. строка может быть отформатирована разным кол-вом пробелов для наглядности sources.txt.
 			re := regexp.MustCompile(`[\s\p{Zs}]{2,}`)
 			line = re.ReplaceAllString(line, " ")
 			words := strings.Split(line, " ") // Массив вида [repo http://url tag1 tag2].
